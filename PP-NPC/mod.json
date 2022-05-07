@@ -1,0 +1,36 @@
+{
+  "Name": "PP-NPC",
+  "Author": "JohnnyTaco",
+  "Description": "Adds 50 percent less intelligence to your characters. Create virtual troglodytes and set up Teams, Arsenals, and Spawners",
+  "ModVersion": "0.01",
+  "GameVersion": "1.22.x",
+  "ThumbnailPath": "thumb.png",
+  "EntryPoint": "PPnpc.NpcMain",
+  "Tags": [
+    "ai",
+    "npc",
+    "spawner",
+    "teams"
+  ],
+  "Scripts": [
+    "FlipUtility.cs",
+    "NpcBehaviour.cs",
+    "NpcEvents.cs",
+    "NpcGadget.cs",
+    "NpcGlobals.cs",
+    "NpcHand.cs",
+    "NpcHoverStats.cs",
+    "NpcInventory.cs",
+    "NpcLimb.cs",
+    "NpcMain.cs",
+    "NpcMojo.cs",
+    "NpcPoses.cs",
+    "NpcProps.cs",
+    "NpcThing.cs",
+    "NpcTool.cs",
+    "NpcUtils.cs"
+  ],
+  "Active": true,
+  "UGCIdentity": null,
+  "CreatorUGCIdentity": "2803192317"
+}

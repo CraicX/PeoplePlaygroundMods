@@ -1,0 +1,18 @@
+{
+	"Name": "ObjectDumpX",
+	"Author": "JohnnyTaco",
+	"Description": "Dumps information about objects to the games Main.log file (utility for modding)",
+	"ModVersion": "1.04",
+	"GameVersion": "1.11+",
+	"ThumbnailPath": "thumb.png",
+	"EntryPoint": "ObjectDumpX.ObjectDumpX",
+	"Tags": [
+		"utility"
+	],
+	"Scripts": [
+		"ObjectDumpX.cs"
+	],
+	"Active": true,
+	"UGCIdentity": null,
+	"CreatorUGCIdentity": "2579915682"
+}

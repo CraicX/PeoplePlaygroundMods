@@ -1,0 +1,20 @@
+{
+	"Name": "Mulligan",
+	"Author": "JohnnyTaco",
+	"Description": "Utility mod for controlling, flipping, tweaking, arming, resetting items",
+	"ModVersion": "1.87",
+	"GameVersion": "1.16+",
+	"ThumbnailPath": "thumb.png",
+	"EntryPoint": "Mulligan.Mulligan",
+	"Tags": [
+		"Utility"
+	],
+	"Scripts": [
+		"Mulligan.cs",
+		"MulliganBehaviour.cs",
+		"FlipUtility.cs"
+	],
+	"Active": true,
+	"UGCIdentity": null,
+	"CreatorUGCIdentity": "2369099463"
+}
