@@ -9,14 +9,6 @@ The source code to mods Ive written for People Playground.  Feel free to use any
 
 ---
 
-### DebugX
-
-> This lets you dump information about which Behaviour classes are attached to selected objects.  Also lets you export pose angles that can be used in the game.
-
-<img src="DebugX/thumb.png?raw=truepng" width="250">
-          
----
-
 ### Mulligan
 
 > Adds about 20 or so shortcut/hotkeys to the game that perform various "useful" functions to save time so you spend more time playing and less time trying to set things up.
@@ -31,4 +23,12 @@ The source code to mods Ive written for People Playground.  Feel free to use any
 
 <img src="PuppetMaster/thumb.png?raw=truepng" width="250">
 
+---
+
+### DebugX
+
+> This lets you dump information about which Behaviour classes are attached to selected objects.  Also lets you export pose angles that can be used in the game.
+
+<img src="DebugX/thumb.png?raw=truepng" width="250">
+          
 ---
