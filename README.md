@@ -22,6 +22,7 @@ The source code to mods Ive written for People Playground.  Feel free to use any
 > Adds about 20 or so shortcut/hotkeys to the game that perform various "useful" functions to save time so you spend more time playing and less time trying to set things up.
 
 <img src="Mulligan/thumb.png?raw=truepng" width="250">
+
 ---
 
 ### PuppetMaster
@@ -29,4 +30,5 @@ The source code to mods Ive written for People Playground.  Feel free to use any
 > Adds a control schematic that you can turn on or off in game that allows you to take full control of characters, drive cars and bicycles, use melee weapons and firearms.  Supports modded characters and a built in inventory system.
 
 <img src="PuppetMaster/thumb.png?raw=truepng" width="250">
+
 ---
