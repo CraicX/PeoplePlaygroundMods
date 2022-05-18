@@ -36,15 +36,18 @@ namespace PPnpc
 		public float WatchEvent;
 		public float Medic;
 		public float Shoot;
+		public float Recruit;
+		public float Fidget;
+		public float Disco;
 		private float _startweight;
 		public ActWeight( float startWeight )
 		{
 			Fight = Defend = DefendPerson = GroupUp = Scavenge = Retreat = Wander = Survive = TakeCover = Dying = Dead = 
-				FightFire = WatchEvent = Medic = Shoot = _startweight = startWeight;
+				FightFire = WatchEvent = Medic = Shoot = Recruit = Fidget = Disco = _startweight = startWeight;
 		}
 
 		public void reset() => Fight = Defend = DefendPerson = GroupUp = Scavenge = Retreat = Survive = Dying = Dead = 
-			TakeCover = FightFire = WatchEvent = Medic = Shoot = _startweight;
+			TakeCover = FightFire = WatchEvent = Medic = Shoot = Recruit = Fidget = Disco = _startweight;
 	}
 
 	public struct NpcGoals
@@ -53,6 +56,7 @@ namespace PPnpc
 		public bool Scavenge;
 		public bool Attack;
 		public bool Shoot;
+		public bool Recruit;
 		
 		public NpcGoals( NpcBehaviour npc )
         {
@@ -60,9 +64,12 @@ namespace PPnpc
 			Scavenge = true;
 			Attack   = false;
 			Shoot	 = false;
+			Recruit  = false;
         }
 
     }
+
+
 
     public enum EventIds
 	{
@@ -78,6 +85,8 @@ namespace PPnpc
 		Battle,
 		Fire,
 		Medic,
+		Jukebox,
+		TV,
 	}
 
 	
@@ -132,6 +141,9 @@ namespace PPnpc
 		Dive,
 		Medic,
 		Shoot,
+		Recruit,
+		Fidget,
+		Disco,
 	}
 
 	public enum AimStyles
@@ -143,7 +155,9 @@ namespace PPnpc
 		Rockets,
 	};
 
-	public enum Gadgets
+	
+
+    public enum Gadgets
 	{
 		AIChip,
 	}
@@ -217,6 +231,58 @@ namespace PPnpc
 		public float Importance;
 	}
 
+
+
+	public struct LimbPoseSnapshot
+	{
+		public Dictionary<string, RagdollPose.LimbPose> DLimbs;
+	}
+
+	public struct ActivityMessages
+    {
+		public NpcBehaviour NPC;
+		public string msg;
+		public float time;
+
+		public ActivityMessages( NpcBehaviour _npc )
+        {
+			NPC  = _npc;
+			msg  = "";
+			time = 0f;
+        }
+
+		public void Set( string message, float seconds )
+        {
+			msg  = message;
+			time = Time.time + seconds;
+			if (NPC.HoverStats) NPC.HoverStats.ShowText();
+        }
+    }
+
+    public struct RigidSnapshot
+	{
+		public float inertia;
+		public float mass;
+		public float drag;
+		public float angularDrag;
+
+		public RigidSnapshot( Rigidbody2D rbIn )
+		{
+			inertia     = rbIn.inertia;
+			mass        = rbIn.mass;
+			drag        = rbIn.drag;
+			angularDrag = rbIn.angularDrag;
+		}
+
+		public void Reset( Rigidbody2D rbIn )
+		{
+			rbIn.inertia     = inertia;
+			rbIn.mass        = mass;
+			rbIn.drag        = drag;
+			rbIn.angularDrag = angularDrag;
+		}
+	}
+
 	public struct EventInfo
 	{
 		public EventIds EventId;
@@ -278,13 +344,26 @@ namespace PPnpc
 		public bool PermaDeath		           = true;
 		public float ChanceForLimbCrushOnDeath = 100;
 		public float DecomposeRate			   = 100;
-		public MinMax SecondsBeforeCrush       = new MinMax(201,60);
+		public MinMax SecondsBeforeCrush       = new MinMax(11,60);
 		public string Name                     = "?";
 		public string NpcType                  = "Default";
 		public float BaseThreatLevel           = 5f;
 		public float AimingSkill               = 0.9f;
+		private static Dictionary<string,int> Names = new Dictionary<string,int>();
 		public string[] FriendlyTypes;
 		public string[] HostileTypes;
+
+		public void SetName( string _name )
+        {
+			if (Names.ContainsKey(_name)) {
+				Names[_name] += 1;
+				Name = _name + " #" + Names[_name];
+			}
+			else {
+				Names[_name] = 1;
+				Name = _name;
+			}
+        }
 	}
 
 	public static class NpcGlobal
@@ -298,6 +377,13 @@ namespace PPnpc
 		public static List<PersonBehaviour> AllPersons = new List<PersonBehaviour>();
 		public static List<PhysicalBehaviour> AllItems = new List<PhysicalBehaviour>();
 		public static List<PhysicalBehaviour> NewItems = new List<PhysicalBehaviour>();
+
+		public static string[] ItemsNoCollide;
+        
+		public static string[] ToyNames =
+        {
+			"Jukebox", "Radio", "Small Button", "Television", "Tesla Coil", "Thruster", "Thrusterbed", "Wooden Chair", "Bus Chair"
+        };
 
 		public static void RescanMap(bool ForceRefresh=false)
 		{

@@ -238,6 +238,8 @@ namespace PPnpc
 
         }
 
+       
+
         public static void Clear(PersonBehaviour pb)
         {
             if (!pb) return;
@@ -408,6 +410,19 @@ namespace PPnpc
                 UpperLeg:0.4376444,
                 UpperLegFront:-0.03437976"
             },
+            { "robot1",
+              @"LowerArm:74.26377,
+                LowerArmFront:100.959,
+                UpperArm:-83.66212,
+                UpperArmFront:75.15743"  
+            },
+            { "robot2",
+              @"LowerArm:92.8947,
+                LowerArmFront:95.35808,
+                UpperArm:72.13412,
+                UpperArmFront:-103.7387"  
+            },
+            { "robotbody",@"LowerBody:32.04889"},
             { "jump",
               @"LowerArm:-95.09151,
                 LowerArmFront:-85.78412,

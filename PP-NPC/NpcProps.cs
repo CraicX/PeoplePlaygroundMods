@@ -41,6 +41,7 @@ namespace PPnpc
         public bool isRocket      = false;
         public bool isGrenade     = false;
         
+        
         public bool protectFromFire;
         
         public bool canFightFire  = false;
@@ -50,12 +51,16 @@ namespace PPnpc
         public bool canShoot      = false;
         public bool canStrike     = false;
         public bool canExplode    = false;
+        public bool canRecruit    = false;
         
         public bool lockWeights   = false;
 
         //public bool xtraLarge;
         public bool needsTwoHands = false;
         public bool xtraLarge     = false;
+
+        public float ThreatLevel  = 0f;
+
 
         public AimStyles CurrentAimStyle = AimStyles.Standard;
 
@@ -78,8 +83,8 @@ namespace PPnpc
         
         public AimStyles AimStyle()
         {
-            if (aimStyles.Count == 0) { CurrentAimStyle = AimStyles.Standard; return CurrentAimStyle; }
-            if (aimStyles.Count == 1) { CurrentAimStyle =  aimStyles.Keys.First(); return CurrentAimStyle; }
+            if (aimStyles.Count == 0) { CurrentAimStyle = AimStyles.Standard;     return CurrentAimStyle; }
+            if (aimStyles.Count == 1) { CurrentAimStyle = aimStyles.Keys.First(); return CurrentAimStyle; }
             int maxRand = 0;
 
             foreach ( KeyValuePair<AimStyles, int> pair in aimStyles )
@@ -99,6 +104,56 @@ namespace PPnpc
 
             CurrentAimStyle = aimStyles.Keys.First();
             return CurrentAimStyle;
+        }
+
+        public AimStyles AimStyle( NpcBehaviour shooter, NpcBehaviour target )
+        {
+            if (aimStyles.Count == 0) { CurrentAimStyle = AimStyles.Standard;     return CurrentAimStyle; }
+            if (aimStyles.Count == 1) { CurrentAimStyle = aimStyles.Keys.First(); return CurrentAimStyle; }
+            
+			bool IsDroid  = shooter.PBO.Limbs[0].IsAndroid;
+			bool IsHurt   = shooter.PBO.PainLevel > 0;
+			bool EnemyFar = (shooter.Head.position - target.Head.position).sqrMagnitude > 5;
+			bool EnemyGun = target.HasGun;
+
+            int maxRand = 0;
+
+            Dictionary<AimStyles, float> weightAdjustments = new Dictionary<AimStyles, float>();
+            
+            if (NpcMain.DEBUG_LOGGING) Debug.Log(shooter.NpcId + " Enemy Distance:" + (shooter.Head.position - target.Head.position).sqrMagnitude);
+
+            if (!EnemyGun) weightAdjustments[AimStyles.Proned]            = 0;
+            if (IsDroid) weightAdjustments[AimStyles.Proned]              = 0;
+            if (IsDroid) weightAdjustments[AimStyles.Crouched]            = 0.5f;
+            if (IsHurt && !IsDroid) weightAdjustments[AimStyles.Crouched] = 3f;
+            if (IsHurt && !IsDroid) weightAdjustments[AimStyles.Proned]   = 3f;
+            if (EnemyFar) weightAdjustments[AimStyles.Crouched]           = 2f;
+            if (EnemyFar) weightAdjustments[AimStyles.Proned]             = 2f;
+
+            foreach ( KeyValuePair<AimStyles, int> pair in aimStyles )
+            {
+                int pval = pair.Value;
+                if (weightAdjustments.ContainsKey(pair.Key)) pval = Mathf.RoundToInt(pval * weightAdjustments[pair.Key]);
+                maxRand += pval;
+            }
+
+            
+
+            int idx = xxx.rr(0,maxRand);
+
+            maxRand = 0;
+
+            foreach ( KeyValuePair<AimStyles, int> pair in aimStyles )
+            {
+                int pval = pair.Value;
+                if (weightAdjustments.ContainsKey(pair.Key)) pval = Mathf.RoundToInt(pval * weightAdjustments[pair.Key]);
+                maxRand += pval;
+                if (idx <= maxRand) { CurrentAimStyle = pair.Key; return CurrentAimStyle; }
+            }
+
+            CurrentAimStyle = aimStyles.Keys.First();
+            return CurrentAimStyle;
+
         }
 
         public void AddStyle( AimStyles aimStyle, int weight, bool clearStyles=false, bool lockStyles=false )
@@ -159,20 +214,25 @@ namespace PPnpc
                     {
                         canShoot    = true;
                         isAutomatic = true;
+                        ThreatLevel = 10f;
                     }
 
                     if (ManualFire.Contains(compo))
                     {
                         canShoot    = true;
                         isAutomatic = false;
+                        ThreatLevel = 5f;
                     }
 
                     if ( Rockets.Contains( compo ) )
                     {
-                        ModAPI.Notify("Rocket Launcher");
                         isRocket         = true;
                         Traits["Rocket"] = true;
-                        AddStyle(AimStyles.Rockets,2,true,true);
+                        AddStyle(AimStyles.Rockets,5,true,false);
+                        AddStyle(AimStyles.Standard,1,false,true);
+                        ThreatLevel = 20f;
+                        needsTwoHands = true;
+
                     }
                 }
             }
@@ -195,6 +255,9 @@ namespace PPnpc
                 FBH.Cartridge.Recoil    = 0.1f;
                 Traits["gun"]        = true;
 
+                ThreatLevel = isAutomatic ? 10f : 5f;
+
+
                 AddStyle(AimStyles.Standard,5);
                 AddStyle(AimStyles.Crouched,3);
                 AddStyle(AimStyles.Proned,1);
@@ -204,6 +267,9 @@ namespace PPnpc
                 canShoot             = true;
                 isAutomatic          = PLB.IsAutomatic;
                 PLB.recoilMultiplier = 0.1f;
+
+                ThreatLevel = isAutomatic ? 6f : 3f;
+
 
                 AddStyle(AimStyles.Standard,5);
                 AddStyle(AimStyles.Crouched,5);
@@ -216,21 +282,29 @@ namespace PPnpc
                 BB.Recoil            = 0.1f;
                 Traits["gun"]     = true;
 
-                AddStyle(AimStyles.Standard,1, true);
-                AddStyle(AimStyles.Crouched,4);
+                ThreatLevel = isAutomatic ? 10f : 5f;
+
+
+                AddStyle(AimStyles.Standard,2, true);
+                AddStyle(AimStyles.Crouched,2);
                 AddStyle(AimStyles.Proned,2,false,true);
 
             }
             else if (P.TryGetComponent(out BeamformerBehaviour BB2))
             {
                 BB2.RecoilForce               = 0.1f;
-                Traits["rocket"]              = true;
+                Traits["rocket"]           = true;
+
+                ThreatLevel = 30f;
+
                 
                 AddStyle(AimStyles.Rockets,2,true,true);
             }
             else if (P.TryGetComponent(out GenericScifiWeapon40Behaviour GWB))
             {
                 GWB.RecoilForce     = 0.1f;
+                ThreatLevel = 5f;
+
             }
             //else if (P.TryGetComponent(out AcceleratorGunBehaviour AB))
             //{
@@ -250,6 +324,12 @@ namespace PPnpc
                 angleAim     = 180f;
                 canAim       = true;
                 Traits["flashlight"]        = true;
+            }
+            else if (P.TryGetComponent<NpcGadget>(out _))
+            {
+                angleHold    = -95f;
+                angleAim     = 180f;
+                canRecruit   = true;
             } 
 
             if ( P.name.ToLower().Contains( "grenade launch" ) )
@@ -257,18 +337,15 @@ namespace PPnpc
                 canFightFire = false;
                 canShoot     = true;
                 Traits["rocket"]        = true;
+                
+                ThreatLevel = 22f;
+
+
                 AddStyle(AimStyles.Rockets,2,true,true);
 
             }
             
-            if ( P.name.ToLower().Contains( "extinguisher" ) )
-            {
-                canFightFire = true;
-                canShoot     = false;
-                Traits["extinguisher"]        = true;
-                AddStyle(AimStyles.Spray,2,true,true);
-
-            }
+            
 
             size             = P.ObjectArea;
 
@@ -282,10 +359,14 @@ namespace PPnpc
                 
                 canSlice        = P.TryGetComponent<SharpOnAllSidesBehaviour>(out _);
 
+                ThreatLevel = canStab ? 2f : 1f;
+
+                if(canSlice) ThreatLevel += 2f;
                 if (canStab) {
                     if (P.ObjectArea < SmallShivLength) {
                         isShiv = true;
                         Traits["knife"]        = true;
+
                     } else
                     {
                         if (canStab) Traits["sword"] = true;
@@ -297,6 +378,15 @@ namespace PPnpc
             {
                 canAim      = true;
                 if (size > NeedsTwoHandsLength) needsTwoHands = true;
+            }
+
+            if ( P.name.ToLower().Contains( "extinguisher" ) )
+            {
+                canFightFire = true;
+                canShoot     = false;
+                Traits["extinguisher"]        = true;
+                AddStyle(AimStyles.Spray,2,true,true);
+
             }
 
             if (itemName.Contains("syringe"))
@@ -339,6 +429,8 @@ namespace PPnpc
 
             if (P.TryGetComponent<ChainsawBehaviour>(out _))
             {
+                ThreatLevel = 4f;
+
                 isChainSaw  = true;
                 canStab     = false;
                 canSlice    = false;

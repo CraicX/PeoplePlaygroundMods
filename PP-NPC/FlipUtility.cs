@@ -27,6 +27,18 @@ namespace Utilities
 			HaveQueuedJobs = true; 
 		}
 
+		public static void ForceFlip( params PhysicalBehaviour[] ItemsToFlip )
+        {
+			foreach ( PhysicalBehaviour item in ItemsToFlip )
+            {
+				Vector3 scale = item.transform.localScale;
+
+				scale.x *= -1;
+			
+				item.transform.localScale = scale;
+            }
+        }
+
 		void Awake()
 		{
 			if (_instance != null && _instance != this) UnityEngine.Object.Destroy(this.gameObject);
@@ -108,7 +120,7 @@ namespace Utilities
 								Attachments.Add(PBO.GetInstanceID(),GetAttachments(PBO));
 							}
 
-							NoFlip.Add(pb);
+							if (PBs.Length > 1) NoFlip.Add(pb);
 							continue; 
 					   }
 					}
@@ -194,9 +206,9 @@ namespace Utilities
 			public void FlipPersons() => Persons.ForEach(p => FlipPerson(p));
 			public void FlipItems() => Items.ForEach(p => FlipItem(p));
 
-			public void FlipItem(PhysicalBehaviour PB)
+			public void FlipItem(PhysicalBehaviour PB, bool force=false)
 			{
-				if (NoFlip.Contains(PB)) return;
+				if (!force && NoFlip.Contains(PB)) return;
 
 				NoFlip.Add(PB);
 
@@ -209,6 +221,20 @@ namespace Utilities
 
 			public void FlipPerson(PersonBehaviour PBO)
 			{
+				
+				//
+				//	Get Held Item's current rotation offset
+				//
+				Dictionary<GripBehaviour, float> rOffsets = new Dictionary<GripBehaviour, float>();
+				foreach ( GripBehaviour GB in PBO.gameObject.GetComponentsInChildren<GripBehaviour>() )
+				{
+					if (GB.isHolding)
+					{
+						rOffsets[GB] = (GB.CurrentlyHolding.rigidbody.rotation - GB.GetComponentInParent<Rigidbody2D>().rotation) * (PBO.transform.localScale.x < 0.0f ? 1.0f : -1.0f);
+					}
+				}
+
+
 				Vector3 flipScale = PBO.transform.localScale;
 
 				flipScale.x *= -1;
@@ -276,7 +302,7 @@ namespace Utilities
 								//  Set new item rotation
 								heldItem.transform.rotation = Quaternion.Euler(
 									0.0f, 0.0f,
-									GB.GetComponentInParent<Rigidbody2D>().rotation + 95.0f * (PBO.transform.localScale.x < 0.0f ? 1.0f : -1.0f)
+									GB.GetComponentInParent<Rigidbody2D>().rotation + rOffsets[GB] * (PBO.transform.localScale.x < 0.0f ? 1.0f : -1.0f)
 								);
 
 								//  Move item to flipped position
@@ -318,7 +344,7 @@ namespace Utilities
 								//  Set new item rotation
 								heldItem.transform.rotation = Quaternion.Euler(
 									0.0f, 0.0f,
-									GB.GetComponentInParent<Rigidbody2D>().rotation + 95.0f * (PBO.transform.localScale.x < 0.0f ? 1.0f : -1.0f)
+									GB.GetComponentInParent<Rigidbody2D>().rotation + rOffsets[GB] * (PBO.transform.localScale.x < 0.0f ? 1.0f : -1.0f)
 								);
 
 								//  Move item to flipped position

@@ -61,8 +61,6 @@ namespace PPnpc
                     {
                         NpcGlobal.LastClicked = npc.NpcId;
                         npc.Selected(sender, phys);
-
-
                     }
                 };
 

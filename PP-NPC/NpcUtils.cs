@@ -34,6 +34,8 @@ namespace PPnpc
 
 		}
 
+		public static Quaternion LookAt2D(Vector2 forward) => Quaternion.Euler(0, 0, Mathf.Atan2(forward.y, forward.x) * Mathf.Rad2Deg);
+
 		public static Dictionary<int, WeaponBasics> WeaponBasicsCache = new Dictionary<int, WeaponBasics>();
 		public static WeaponBasics GetWeaponBasics( PhysicalBehaviour weapon )
 		{
@@ -143,6 +145,7 @@ namespace PPnpc
 
 		public static bool AimingTowards( Transform gun, Transform target, float dist = 10f )
 		{
+			float facing = (gun.transform.localScale.x < 0.0f) ? 1f : -1f;
 			int numRes = Physics2D.Raycast((Vector2) gun.transform.position, (Vector2) gun.transform.TransformVector(Vector3.right), filter, NpcBehaviour.HitResults, 10f);
 
 			Transform t = target == target.root ? target : target.root;
@@ -186,8 +189,8 @@ namespace PPnpc
 				if (limb  && !limb.Broken && !limb.IsConsideredAlive) threatLevel += 0.1f;
 			}
 
-			if (npc.FH.IsHolding && npc.FH.Tool) threatLevel += npc.FH.Tool.ThreatLevel;
-			if (npc.BH.IsHolding && npc.BH.Tool) threatLevel += npc.BH.Tool.ThreatLevel;
+			if (npc.FH.IsHolding && npc.FH.Tool) threatLevel += npc.FH.Tool.props.ThreatLevel;
+			if (npc.BH.IsHolding && npc.BH.Tool) threatLevel += npc.BH.Tool.props.ThreatLevel;
 
 			threatLevel -= npc.Mojo.Feelings["Chicken"];
 
@@ -210,11 +213,20 @@ namespace PPnpc
 			return true;
 		}
 		
-		public static string NGlow( string txtIn )
-		{
-			return "<color=green>[<color=yellow>" + txtIn + "</color>]</color>";
-		}
+		
 
+
+		public static bool NPCOnFire( NpcBehaviour npc )
+		{
+			if (!npc || !npc.PBO) return false;
+			foreach ( LimbBehaviour limb in npc.PBO.Limbs )
+			{
+				if (!limb) continue;
+				if (limb.PhysicalBehaviour.OnFire) return true;
+			}
+
+			return false;
+		}
 
 		public static bool ValidateEnemyTarget( PersonBehaviour enemy )
 		{
@@ -484,17 +496,7 @@ namespace PPnpc
 
 
 
-		public static int ScanAhead( Vector2 point, Vector2 size, float facing, ref Collider2D[] results )
-		{
-			filter.NoFilter();
-			
-			Vector2 startPoint = point;
-			startPoint.x += ((size.x / 2) * facing) + (1f * facing);
-			startPoint.y -= 1f;
-			
-			return Physics2D.OverlapBox(startPoint, size, 0f, filter, results);
-
-		}
+		
 
 		public static Vector2 FindFloor( Vector2 startPos )
 		{
@@ -549,6 +551,36 @@ namespace PPnpc
 		}
 
 
+		
+
+		public static LineRenderer InitLine(GameObject lineOwner)
+		{
+			LineRenderer lr = lineOwner.GetOrAddComponent<LineRenderer>();
+
+			lr.enabled             = false;
+			lr.startColor          = new Color(1f, 0.1f, 0.1f, 1f);
+			lr.endColor            = new Color(0.1f, 0.1f, 1f, 1f);
+			//lr.startColor        = new Color(1f, 0.3f, 0f, 0.25f);
+			//lr.endColor          = new Color(1f, 0.4f, 0f, 0.5f);
+			lr.startWidth          = 0.06f;
+			lr.endWidth            = 0.06f;
+			lr.numCornerVertices   = 0;
+			lr.numCapVertices      = 0;
+			lr.useWorldSpace       = true;
+			lr.alignment           = LineAlignment.View;
+			lr.sortingOrder        = 2;
+			lr.material            = Resources.Load<Material>("Materials/PhaseLink");
+			//lr.material          = ModAPI.FindMaterial("Sprites-Default");
+			lr.textureMode         = LineTextureMode.DistributePerSegment;
+			lr.textureMode         = LineTextureMode.Tile;
+			lr.hideFlags           = HideFlags.HideAndDontSave;
+
+			return lr;
+		}
+
+		
+
+
 	}
 
 	public static class FunFacts
@@ -586,6 +618,7 @@ namespace PPnpc
 
 		public static void Inc( int npcId, string key, int val=1 )
 		{
+			if (!FFList.ContainsKey(npcId)) Init(npcId);
 			if (!FFList[npcId].Facts.ContainsKey(key)) { 
 				FFList[npcId].Facts[key] = val; 
 

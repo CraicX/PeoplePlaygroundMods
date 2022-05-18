@@ -180,11 +180,12 @@ namespace PPnpc
 
 				if ( BeenActivated )
 				{
+					SRS[1].sortingOrder = -1;
 					//RB["LowerArm"].AddForce((RB["Head"].position - RB["LowerArm"].position ) * 150f * Time.fixedDeltaTime);
 					//RB["LowerArmFront"].AddForce((RB["Head"].position - RB["LowerArmFront"].position ) * 200f * Time.fixedDeltaTime);
 					//RB["UpperArm"].AddForce(new Vector2(1,1) * Facing * 150f * Time.fixedDeltaTime);
 					//RB["UpperArmFront"].AddForce(new Vector2(1,1) * Facing * 170f * Time.fixedDeltaTime);
-					if (!AlreadyAI) { 
+					if (!AlreadyAI && TargetPerson.IsTouchingFloor) { 
 						RB["UpperBody"].AddForce(new Vector2(0,3) * 170f * Time.fixedDeltaTime);
 						TargetPerson.OverridePoseIndex = (int)PoseState.Protective;
 					}
@@ -238,7 +239,7 @@ namespace PPnpc
 							{
 								audioSource.PlayOneShot(AudioClips[3], 1f);
 
-								ExplosiveBehaviour explosion = TargetPerson.Limbs[0].gameObject.AddComponent<ExplosiveBehaviour>();
+								ExplosiveBehaviour explosion = TargetPerson.Limbs[0].gameObject.GetOrAddComponent<ExplosiveBehaviour>();
 								explosion.Range              = 5f;
 								explosion.ShockwaveStrength  = 1.5f;
 								explosion.Delay              = xxx.rr(0.01f,2.0f);
@@ -253,8 +254,10 @@ namespace PPnpc
 							}
 
 							foreach( LimbBehaviour limbx in TargetPerson.Limbs ) limbx.Broken = false;
+							
+							bool alreadySet = TargetPerson.gameObject.TryGetComponent<NpcBehaviour>(out _);
 
-							NpcBehaviour npc = TargetPerson.gameObject.AddComponent<NpcBehaviour>();
+							NpcBehaviour npc = TargetPerson.gameObject.GetOrAddComponent<NpcBehaviour>();
 							audioSource.PlayOneShot(AudioClips[2], 1f);
 							yield return new WaitForSeconds(3);
 				
@@ -262,6 +265,7 @@ namespace PPnpc
 							npc.enabled  = true;
 							npc.TeamId   = TeamId;
 							npc.AIMethod = AIMethods.AIChip;
+							if (alreadySet) npc.StartCoroutine(npc.IGlitch());
 							break;
 						}
 					}
@@ -294,6 +298,22 @@ namespace PPnpc
 					{ 
 						if ( lb.RoughClassification == LimbBehaviour.BodyPart.Head )
 						{
+
+							PhysicalBehaviour pb = gameObject.GetComponent<PhysicalBehaviour>();
+							GripBehaviour[] AllGrips = UnityEngine.Object.FindObjectsOfType<GripBehaviour>();
+							for ( int i = AllGrips.Length; --i >= 0; )
+                            {
+								if(AllGrips[i].isHolding && AllGrips[i].CurrentlyHolding == pb) AllGrips[i].DropObject();
+								if ( AllGrips[i].transform.root.TryGetComponent<NpcBehaviour>( out NpcBehaviour holdingNpc ) )
+                                {
+									holdingNpc.CancelAction = true;
+                                }
+                            }
+							SRS[1].sortingOrder = -1;
+							
+							gameObject.GetComponent<SpriteRenderer>().sortingOrder     = -1;
+							gameObject.GetComponent<SpriteRenderer>().sortingLayerName = lb.PhysicalBehaviour.spriteRenderer.sortingLayerName;
+							
 							BeenActivated = true;
 							transform.SetParent(lb.transform);
 							ModAPI.CreateParticleEffect("FuseBlown", transform.position);
@@ -311,7 +331,7 @@ namespace PPnpc
 							audioSource.PlayOneShot(AudioClips[1], 1f);
 							
 							
-							FixedJoint2D joint = gameObject.AddComponent<FixedJoint2D>();
+							FixedJoint2D joint = gameObject.GetOrAddComponent<FixedJoint2D>();
 							
 							//joint.anchor                       = lb.transform.InverseTransformPoint(transform.position);
 							
@@ -333,9 +353,10 @@ namespace PPnpc
 
 							Rigidbody2D[] RBs   = TargetPerson.transform.GetComponentsInChildren<Rigidbody2D>();
 							LimbBehaviour[] LBs = TargetPerson.transform.GetComponentsInChildren<LimbBehaviour>();
-
-							foreach (Rigidbody2D rb in RBs) RB.Add(rb.name, rb);
-							foreach (LimbBehaviour lbx in LBs) LB.Add(lbx.name, lbx);
+							RB.Clear();
+							LB.Clear();
+							foreach (Rigidbody2D rb in RBs) RB[rb.name] = rb;
+							foreach (LimbBehaviour lbx in LBs) LB[lbx.name] =  lbx;
 
 							//LB["LowerArm"].Broken      = true;
 							//LB["LowerArmFront"].Broken = true;
@@ -405,6 +426,10 @@ namespace PPnpc
                         npc.AIMethod = AIMethods.Syringe;
 						StopAllCoroutines();
 						Destroy( this );
+                    } else
+                    {
+						NpcBehaviour npcx = TargetPerson.transform.root.gameObject.GetOrAddComponent<NpcBehaviour>();
+						if (npcx.AIMethod == AIMethods.AIChip) npcx.StartCoroutine(npcx.IGlitch());
                     }
                     break;
                 }

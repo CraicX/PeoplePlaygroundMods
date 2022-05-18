@@ -12,6 +12,7 @@
 //
 //
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 
 
@@ -22,7 +23,8 @@ namespace PPnpc
 		public string LimbName;
 		public LimbBehaviour LB;
 		public NpcBehaviour NPC;
-		public float timeOut = 0f;
+		public float timeOut  = 0f;
+		private string lCase = "";
 
 		public void MalfuncExplode() => LB.Crush();
 		public void MalfuncIgnite()  => LB.PhysicalBehaviour.Ignite();
@@ -91,13 +93,33 @@ namespace PPnpc
 		{
 			if (!NPC.PBO.IsAlive()) return;
 			if (coll.gameObject.layer != 9) {
-				if ( coll.gameObject.name.ToLower().Contains( "wall" ) && Time.time > timeOut )
+				if ( coll.gameObject.name.Contains( "wall" ) && Time.time > timeOut )
 				{
+					NPC.CancelAction = true;
 					timeOut = Time.time + 1;
 					NPC.PBO.DesiredWalkingDirection = 0;
 					return;
 				}
 			}
+
+			if (NpcGlobal.ToyNames.Contains(coll.gameObject.name)) {
+				xxx.ToggleCollisions(transform, coll.transform,false, true);
+            }
+
+			lCase = coll.gameObject.name.ToLower();
+
+			if(lCase == "root") return;
+
+			if (lCase.Contains("debris") ) xxx.ToggleCollisions(transform, coll.gameObject.transform,false, true);
+
+			if (NPC.PrimaryAction == NpcPrimaryActions.Scavenge && NPC.MyTargets.prop) 
+            {
+				if (++NPC.CollisionCounter > 10) {
+                    NPC.ScannedPropsIgnored.Add(NPC.MyTargets.prop);
+					NPC.ClearAction();
+					return;
+				}
+            }
 
 			if (coll == null) return;
 
@@ -139,7 +161,7 @@ namespace PPnpc
 					return;
 				} else
 				{
-					if (coll.contacts[0].relativeVelocity.magnitude > 2f )
+					if (!NPC.NoGhost.Contains(coll.transform.root) && coll.contacts[0].relativeVelocity.magnitude > 2f )
 					{
 						xxx.ToggleCollisions(transform, person.transform,false, true);
 						return;

@@ -21,9 +21,7 @@ namespace PPnpc
 {
 	public class NpcBehaviour : MonoBehaviour, Messages.IStabbed, Messages.IShot
 	{
-		public bool LOGGING     = true;
 
-		public bool DEBUG_DRAW  = false;
 
 		public bool DisableFlip = false;
 		public NpcConfig Config = new NpcConfig();
@@ -53,6 +51,8 @@ namespace PPnpc
 		public NpcGoals Goals;
 
 		public NpcEnhancements Enhancements;
+		public List<Transform> NoGhost = new List<Transform>();
+
 		
 
 		//
@@ -80,6 +80,7 @@ namespace PPnpc
 		//  -------------------------
 		//
 
+		public AimStyles CurrentAimStyle = AimStyles.Standard;
 		public NpcPose MyNpcPose;
 
 		public Dictionary<string, NpcPose> CommonPoses = new Dictionary<string, NpcPose>();
@@ -99,17 +100,22 @@ namespace PPnpc
 		}
 		public static ContactFilter2D filter = new ContactFilter2D();
 
-		public bool IsAiming => FH.Aiming || BH.Aiming;
+		public bool IsAiming => FH.IsAiming || BH.IsAiming;
 
 		public float TotalWeight   = 0f;
 
 		public static RaycastHit2D[] HitResults   = new RaycastHit2D[10];
 		public static Collider2D[] CollideResults = new Collider2D[100];
+
+		public static RagdollPose WalkPose;
 		
 		public List<NpcBehaviour> MyGroup         = new List<NpcBehaviour>();
 		public List<NpcBehaviour> MyFights        = new List<NpcBehaviour>();
 		public List<NpcBehaviour> MyFriends       = new List<NpcBehaviour>();
 		public List<NpcBehaviour> MyEnemies       = new List<NpcBehaviour>();
+		public List<NpcBehaviour> IgnoreNpc       = new List<NpcBehaviour>();
+
+		private readonly Dictionary<string, RigidSnapshot> RigidOriginals = new Dictionary<string, RigidSnapshot>();
 		
 		public List<int> EventInfoIds             = new List<int>();
 		public EventInfo CurrentEventInfo;
@@ -120,11 +126,15 @@ namespace PPnpc
 
 		public int TeamId = 0;
 
+		public int CollisionCounter = 0;
+
 		public AIMethods AIMethod = AIMethods.Spawn;
 
 		public NpcHand FH;
 		public NpcHand BH;
 		public NpcHand[] Hands;
+		NpcHand hand;
+		public NpcHand RandomHand => new NpcHand[]{FH, BH}.PickRandom();
 
 		public float MyHeight = 0f;
 		public float MyWidth  = 0f;
@@ -188,6 +198,9 @@ namespace PPnpc
 			}
 		}
 
+		public ActivityMessages ActivityMessage;
+
+
 
 		private bool isSetup     = false;
 		public bool PauseHold    = false;
@@ -197,6 +210,7 @@ namespace PPnpc
 		public Dictionary<int, float> PeepCollisions = new Dictionary<int, float>();
 		public Dictionary<string, Rigidbody2D>   RB  = new Dictionary<string, Rigidbody2D>();
 		public Dictionary<string, LimbBehaviour> LB  = new Dictionary<string, LimbBehaviour>();
+		public Dictionary<string, LimbPoseSnapshot> PoseSnapshots = new Dictionary<string, LimbPoseSnapshot>();
 		
 		public List<EventLog> EventLog = new List<EventLog> ();
 		public EventLog LastLog        = new EventLog ();
@@ -247,7 +261,7 @@ namespace PPnpc
 		public bool FacingToward( NpcBehaviour npc )	=> npc && npc.Head && FacingToward(npc.Head.position.x);
 		public bool FacingToward( Vector2 pos )			=> FacingToward( pos.x );
 		public bool FacingToward( float posX )			=> ( ( posX * Facing < Head.position.x * Facing ) );
-		void Start()                                    => Invoke("Setup", 1f);
+		void Start()                                    => Invoke("Setup", 2f);
 		public NpcHand OpenHand
 		{
 			get
@@ -257,7 +271,6 @@ namespace PPnpc
 				return hand;
 			}
 		}
-		public void ShowStats()							=> Mojo.ShowStats();
 		public NpcHand GetAltHand( NpcHand hand )       => (hand == FH) ? BH : FH;
 
 		public virtual void CustomSetup() {	}
@@ -279,6 +292,9 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		public void DecideWhatToDo(bool SkipScan=false, bool SkipScoring=false)
 		{
+			CollisionCounter = 0;
+			CancelAction     = false;
+
 			if (!SkipScan) NPCScanView();
 			if (!SkipScoring) PrimaryAction = DecideBestAction();
 
@@ -289,6 +305,8 @@ namespace PPnpc
 				}
 			}
 
+			if (PrimaryActionCoroutine != null) StopCoroutine(PrimaryActionCoroutine);
+
 			switch ( PrimaryAction )
 			{
 				case NpcPrimaryActions.Wait:
@@ -297,6 +315,10 @@ namespace PPnpc
 
 				case NpcPrimaryActions.Scavenge:
 					PrimaryActionCoroutine = StartCoroutine( IActionScavenge() );
+					break;
+
+				case NpcPrimaryActions.Recruit:
+					PrimaryActionCoroutine = StartCoroutine( IActionRecruit() );
 					break;
 
 				case NpcPrimaryActions.GroupUp:
@@ -342,6 +364,14 @@ namespace PPnpc
 				case NpcPrimaryActions.Medic:
 					PrimaryActionCoroutine = StartCoroutine( IActionMedic() );
 					break;
+
+				case NpcPrimaryActions.Fidget:
+					PrimaryActionCoroutine = StartCoroutine( IActionFidget() );
+					break;
+
+				case NpcPrimaryActions.Disco:
+					PrimaryActionCoroutine = StartCoroutine( IActionDisco() );
+					break;
 			}
 			
 		}
@@ -369,6 +399,7 @@ namespace PPnpc
 			
 
 			if (Goals.Scavenge) SvScavenge();
+			if (Goals.Recruit) SvRecruit();
 			if (true || Goals.Shoot) SvShoot();
 
 			//SvGroupUp();
@@ -378,6 +409,8 @@ namespace PPnpc
 			SvCheckForEvents();
 			SvCheckEnvironment();
 			//SvCheckRandomScan();
+
+			if (Mojo.Feelings["Bored"] > 50) SvFidget();
 
 			NpcPrimaryActions tempAction = DecideBestAction();
 
@@ -507,6 +540,12 @@ namespace PPnpc
 				currentScore  = MyActWeights.Scavenge;
 			}
 
+			if ( MyActWeights.Recruit > currentScore )
+			{
+				tempAction    = NpcPrimaryActions.Recruit;
+				currentScore  = MyActWeights.Recruit;
+			}
+
 			if ( MyActWeights.Survive > currentScore )
 			{
 				tempAction    = NpcPrimaryActions.Survive;
@@ -523,6 +562,18 @@ namespace PPnpc
 			{
 				tempAction    = NpcPrimaryActions.WatchEvent;
 				currentScore  = MyActWeights.WatchEvent;
+			}
+
+			if ( MyActWeights.Disco > currentScore )
+			{
+				tempAction    = NpcPrimaryActions.Disco;
+				currentScore  = MyActWeights.Disco;
+			}
+
+			if ( MyActWeights.Fidget > currentScore )
+			{
+				tempAction    = NpcPrimaryActions.Fidget;
+				currentScore  = MyActWeights.Fidget;
 			}
 
 			if ( MyActWeights.FightFire > 0 )
@@ -544,8 +595,13 @@ namespace PPnpc
 			{
 				float baseScore = 0;
 				
-				if (FH.IsHolding == BH.IsHolding) baseScore += 20;
-				else baseScore += 10;
+				if (FH.IsHolding == BH.IsHolding) baseScore += 6;
+				else baseScore += 3;
+
+				if (!LB["LowerLeg"].IsCapable || !LB["UpperLeg"].IsCapable) baseScore -= 3;
+				if (!LB["LowerLegFront"].IsCapable || !LB["UpperLegFront"].IsCapable) baseScore -= 3;
+
+				if (baseScore <= 0) return;
 
 				bool onlyOneHand = (FH.IsHolding || BH.IsHolding);
 
@@ -554,9 +610,25 @@ namespace PPnpc
 				float tempdist = 0;
 				Vector3 position = Head.position;
 
+				float dangerDistance    = float.MaxValue;
+				
+				foreach(NpcBehaviour npcX in ScannedNpc)
+                {
+					if (!npcX || !npcX.PBO || ScannedNpcIgnored.Contains(npcX)) continue;
+
+					if (npcX.IsAiming)
+                    {
+						tempdist = (position - npcX.Head.position).magnitude;
+						if (tempdist < dangerDistance)
+                        {
+							dangerDistance = tempdist;
+                        }
+                    }
+                }
+
 				foreach ( Props prop in ScannedProps )
 				{
-					if (!prop || !prop.P) continue;
+					if (!prop || !prop.P || ScannedPropsIgnored.Contains(prop) || ScannedThingsIgnored.Contains(prop.P)) continue;
 					if (prop.needsTwoHands && onlyOneHand) continue;
 					if (!xxx.CanHold(prop.P) || prop.P.beingHeldByGripper) continue;
 					tempdist = (position - prop.transform.position).sqrMagnitude;
@@ -564,16 +636,130 @@ namespace PPnpc
 					if (tempdist < distance)
 					{
 						selectedProp = prop;
-						distance = tempdist;
+						distance     = tempdist;
 					}
 				}
 
 				if (selectedProp) {
+					if (distance > dangerDistance) baseScore -= 3f;	// something dangerous on the way
 					MyTargets.prop        = selectedProp;
 					MyTargets.propDist    = distance;
 					MyActWeights.Scavenge = baseScore;
 				} 
 			}
+		}
+
+
+		// ────────────────────────────────────────────────────────────────────────────
+		//   :::::: NPC Recruit
+		// ────────────────────────────────────────────────────────────────────────────
+		public void SvRecruit()
+		{
+			if ( ScannedPeople.Count > 0 ) 
+			{
+				float baseScore = 0;
+				
+				if (FH.IsHolding && FH.Tool && FH.Tool.props && FH.Tool.props.canRecruit) baseScore += 3;
+				if (BH.IsHolding && BH.Tool && BH.Tool.props && BH.Tool.props.canRecruit) baseScore += 3;
+
+				if (!LB["LowerLeg"].IsCapable || !LB["UpperLeg"].IsCapable) baseScore -= 3;
+				if (!LB["LowerLegFront"].IsCapable || !LB["UpperLegFront"].IsCapable) baseScore -= 3;
+
+				if (baseScore <= 0) return;
+
+				float distance = float.MaxValue;
+				float tempdist = 0;
+				Vector3 position = Head.position;
+				PersonBehaviour selectedPerson = null;
+
+				float dangerDistance    = float.MaxValue;
+				
+				foreach(NpcBehaviour npcX in ScannedNpc)
+                {
+					if (!npcX || !npcX.PBO || ScannedNpcIgnored.Contains(npcX)) continue;
+
+					if (npcX.IsAiming)
+                    {
+						tempdist = (position - npcX.Head.position).sqrMagnitude;
+						if (tempdist < dangerDistance)
+                        {
+							dangerDistance = tempdist;
+                        }
+                    }
+                }
+
+				foreach ( PersonBehaviour peep in ScannedPeople)
+				{
+					if (!peep || ScannedPeopleIgnored.Contains(peep)) continue;
+
+					tempdist = (position - peep.transform.position).sqrMagnitude;
+
+					if (tempdist < distance)
+					{
+						selectedPerson = peep;
+						distance       = tempdist;
+					}
+				}
+
+				if (selectedPerson) {
+					if (distance > dangerDistance) baseScore -= 3f;	// something dangerous on the way
+					MyTargets.person      = selectedPerson;
+					MyTargets.personDist  = distance;
+					MyActWeights.Recruit  = baseScore;
+				} 
+			}
+		}
+
+
+		// ────────────────────────────────────────────────────────────────────────────
+		//   :::::: NPC GROUPUP
+		// ────────────────────────────────────────────────────────────────────────────
+		public void SvFidget()
+		{
+			if ( xxx.rr( 1, 200 ) < Mojo.Feelings["Bored"] )
+            {
+				if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[scan]: Fidget()");
+
+				List<PhysicalBehaviour> Toys = new List<PhysicalBehaviour>();
+
+				foreach ( PhysicalBehaviour pb in ScannedThings )
+                {
+					if (ScannedThingsIgnored.Contains(pb) || !NpcGlobal.ToyNames.Contains(pb.name)) continue;
+
+					Toys.Add(pb);
+                }
+
+				if ( Toys.Count > 0 )
+                {
+					MyTargets.item = Toys.PickRandom();
+					MyTargets.itemDist = (Head.position - MyTargets.item.transform.position).sqrMagnitude;
+
+					MyActWeights.Fidget = Mojo.Feelings["Bored"] / 10;
+
+					float dangerDistance    = float.MaxValue;
+					float tempdist;
+					float enemyThreatLevel = 0;
+				
+					foreach(NpcBehaviour npcX in ScannedNpc)
+					{
+						if (!npcX || !npcX.PBO || ScannedNpcIgnored.Contains(npcX)) continue;
+
+						if (npcX.IsAiming)
+						{
+							tempdist = (Head.position - npcX.Head.position).sqrMagnitude;
+							if (tempdist < dangerDistance)
+							{
+								dangerDistance      = tempdist;
+								enemyThreatLevel    = npcX.ThreatLevel;
+							}
+						}
+					}
+
+					if (dangerDistance < MyTargets.itemDist) MyActWeights.Fidget -= (enemyThreatLevel - ThreatLevel);
+
+                }
+            }
+
 		}
 
 
@@ -710,11 +896,13 @@ namespace PPnpc
 			{
 				if (npc.HasGun)
 				{
+					
 					PhysicalBehaviour gun = null;
 					if (npc.FH.IsHolding && npc.FH.IsAiming) gun = npc.FH.Tool.P;
 					else if(npc.BH.IsHolding && npc.BH.IsAiming) gun = npc.BH.Tool.P;
+					
 
-					if ( gun && xxx.AimingTowards( gun.transform, Head, 20 ) )
+					if ( gun && xxx.AimingTowards( gun.transform, Head, 50 ) )
 					{
 						if ( npc.TeamId > 0 && npc.TeamId == TeamId )
 						{
@@ -726,6 +914,8 @@ namespace PPnpc
 						{
 							if (HasGun) MyActWeights.Defend += 10;
 							else MyActWeights.Survive += 10;
+							
+							MyTargets.item  = gun;
 							MyTargets.enemy = npc;
 							return true;
 						}
@@ -764,7 +954,7 @@ namespace PPnpc
 
 			//		if ( FacingToward( npcEnemy ) )
 			//		{
-			//			if ( (npcEnemy.FH.Aiming && npcEnemy.FH.Tool.props.canShoot) || (npcEnemy.BH.Aiming && npcEnemy.BH.Tool.props.canShoot) ) 
+			//			if ( (npcEnemy.FH.IsAiming && npcEnemy.FH.Tool.props.canShoot) || (npcEnemy.BH.IsAiming && npcEnemy.BH.Tool.props.canShoot) ) 
 			//			{
 			//				if ( FH.IsHolding || BH.IsHolding )
 			//				{
@@ -853,7 +1043,6 @@ namespace PPnpc
 
 							if ( (FH.IsHolding && FH.Tool && FH.Tool.props.canFightFire) || (BH.IsHolding && BH.Tool && BH.Tool.props.canFightFire) )
 							{
-								ModAPI.Notify("Closest item on fire: " + pb.name);
 								PrimaryAction	= NpcPrimaryActions.FightFire;
 								MyActWeights.FightFire += 100;
 								MyTargets.item	= pb;
@@ -862,10 +1051,14 @@ namespace PPnpc
 
 							} else
 							{
-								ModAPI.Notify("Just Watch");
 								MyActWeights.WatchEvent = 2f;
 							}
 						}
+
+						if ( eInfo.EventId == EventIds.Jukebox )
+                        {
+							MyActWeights.Disco = 2f;
+                        }
 
 						if ( false && eInfo.EventId == EventIds.Medic )
 						{ 
@@ -981,6 +1174,7 @@ namespace PPnpc
 			//}
 		}
 
+
 		// ────────────────────────────────────────────────────────────────────────────
 		//   :::::: CHECK ENVIRONMENT
 		// ────────────────────────────────────────────────────────────────────────────
@@ -1008,8 +1202,8 @@ namespace PPnpc
 					tempdist = (Head.position - pb.transform.position).sqrMagnitude;
 					if (tempdist < dist)
 					{
-						dist    = tempdist;
-						closest = pb.transform.position;
+						dist           = tempdist;
+						closest        = pb.transform.position;
 						MyTargets.item = pb;
 					}
 				}
@@ -1074,12 +1268,22 @@ namespace PPnpc
 			if (Time.time - LastTimeShot < 5) return;
 
 			FunFacts.Inc(NpcId, "BeenShot");
+			Mojo.Feel("Fear", 2f);
+			Mojo.Feel("Angry", 1f);
 
-			//if ( !DefenseActions.Contains( PrimaryAction ) )
-			//{
+			ActivityMessage.Set("I'm shot!", 3f);
+
+			if (HasGun)
+            {
+				if (FH.IsHolding) FH.FireAtWill = true;
+				if (BH.IsHolding) BH.FireAtWill = true;
+            }
+
+			if ( !DefenseActions.Contains( PrimaryAction ) )
+			{
 				StartCoroutine(IGuessShooter(shot.normal));
 				LastTimeShot = Time.time;
-			//}
+			}
 		}
 
 		public void Stabbed(Stabbing stab)
@@ -1232,7 +1436,7 @@ namespace PPnpc
 
 		void FixedUpdate()
 		{
-			if (DEBUG_DRAW) ModAPI.Draw.Rect(ScanStart,ScanStop);
+			if (NpcMain.DEBUG_DRAW) ModAPI.Draw.Rect(ScanStart,ScanStop);
 		}
 		
 
@@ -1269,7 +1473,7 @@ namespace PPnpc
 
 		public IEnumerator IActionWait()
 		{
-			yield return new WaitForFixedUpdate();
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionWait()");
 
 			float waitTime = Time.time + xxx.rr(0.5f, 2f);
 
@@ -1282,65 +1486,58 @@ namespace PPnpc
 			int resultCount ;
 			
 
-			while ( Time.time < waitTime || MyFights.Count > fightCount )
+			while ( Time.time < waitTime && MyFights.Count == fightCount && !CancelAction )
 			{
 				yield return new WaitForFixedUpdate();
 
 				if (Time.time > pspaceCheck) { 
 
+					Mojo.Feel("Bored", 1);
+
+					Mojo.Feel("Tired", -1);
+
 					pspaceCheck = Time.time + 0.1f;
 
-					resultCount = Physics2D.OverlapCapsuleNonAlloc(Head.position, new Vector2(2,1), CapsuleDirection2D.Horizontal, 0f, CollideResults);
+					//resultCount = Physics2D.OverlapCapsuleNonAlloc(Head.position, new Vector2(2,1), CapsuleDirection2D.Horizontal, 0f, CollideResults);
 
-					for ( int i = resultCount; --i >= 0; )
-					{
-						if (CollideResults[i].transform.root.TryGetComponent<PersonBehaviour>(out PersonBehaviour person) && person != PBO) {
-							if (Mathf.Abs(CollideResults[i].attachedRigidbody.velocity.magnitude) > 0.05f) continue;
-							PBO.DesiredWalkingDirection = (FacingToward(CollideResults[i].transform.position)) ? -4f : 4f;
-							break;
-						} 
-					}
+					//for ( int i = resultCount; --i >= 0; )
+					//{
+					//	if (CollideResults[i].transform.root.TryGetComponent<PersonBehaviour>(out PersonBehaviour person) && person != PBO) {
+					//		if (Mathf.Abs(CollideResults[i].attachedRigidbody.velocity.magnitude) > 0.05f) continue;
+					//		PBO.DesiredWalkingDirection = (FacingToward(CollideResults[i].transform.position)) ? -4f : 4f;
+					//		break;
+					//	} 
+					//}
 				}
 
 				if ( Time.time > flipTime )
 				{
-					flipTime = Time.time + xxx.rr(0.5f, 1.1f);
-					if (xxx.rr(1,5) == 3 )
+					flipTime = Time.time + xxx.rr(2.5f, 5.1f);
+					if (xxx.rr(1,10) == 2 )
 					{
-						if (IsUpright) {
-							Flip();
-							break;
-						}
-					} 
-					else if (ScannedWall && IsUpright){
 						Flip();
-						break;
+						yield return new WaitForFixedUpdate();
+					} 
+					else if (ScannedWall ){
+
+						Flip();
+						yield return new WaitForFixedUpdate();
 					}
+
+					//if (Time.frameCount % 50 == 0 && SvCheckForThreats() || SvShoot()) {
+
+					//	if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[Wander]: CheckForThreats || SvShoot()");
+
+					//	DecideWhatToDo(true);
+					//	PBO.DesiredWalkingDirection = 0f;
+					//}
 
 				}
 
-				if (CheckRandomSituations(true)) yield break;
-			}
+				if (Time.frameCount % 50 == 0 && (SvCheckForThreats() || SvShoot())) {
 
-			PrimaryAction = NpcPrimaryActions.Thinking;
-		}
+					if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[Wander]: CheckForThreats || SvShoot()");
 
-
-		public IEnumerator IActionWander()
-		{
-			yield return new WaitForFixedUpdate();
-
-			float wanderTime = Time.time + xxx.rr(0.5f, 10f);
-
-			int fightCount = MyFights.Count;
-
-			while ( Time.time < wanderTime || MyFights.Count > fightCount )
-			{
-				yield return new WaitForFixedUpdate();
-
-				if (PBO.DesiredWalkingDirection < 1f) PBO.DesiredWalkingDirection = 10f;
-
-				if (Time.frameCount % 50 == 0 && SvCheckForThreats() || SvShoot()) {
 					DecideWhatToDo(true);
 					PBO.DesiredWalkingDirection = 0f;
 				}
@@ -1350,9 +1547,42 @@ namespace PPnpc
 		}
 
 
+		public IEnumerator IActionWander()
+		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionWander()");
+			yield return new WaitForFixedUpdate();
+
+			float wanderTime = Time.time + xxx.rr(0.5f, 5f);
+
+			int fightCount = MyFights.Count;
+
+			while ( Time.time < wanderTime && MyFights.Count == fightCount && !CancelAction )
+			{
+				yield return new WaitForFixedUpdate();
+
+				if (PBO.DesiredWalkingDirection < 1f) {
+					PBO.DesiredWalkingDirection = 10f;
+					Mojo.Feel("Tired", 1);
+					Mojo.Feel("Bored", -1);
+				}
+
+				if (Time.frameCount % 50 == 0 && (SvCheckForThreats() || SvShoot())) {
+
+					if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[Wander]: CheckForThreats || SvShoot()");
+
+					DecideWhatToDo(true);
+					PBO.DesiredWalkingDirection = 0f;
+				}
+			}
+			Mojo.Feel("Tired", wanderTime * 0.1f);
+			PrimaryAction = NpcPrimaryActions.Thinking;
+		}
+
+
 		public IEnumerator IActionMedic()
 		{
-			//PrimaryAction = NpcPrimaryActions.Medic;
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionMedic()");
+			PrimaryAction = NpcPrimaryActions.Medic;
 
 			NpcBehaviour hurtNpc = CurrentEventInfo.NPCs[0];
 			if (!hurtNpc || !hurtNpc.PBO) {
@@ -1474,16 +1704,21 @@ namespace PPnpc
 			PrimaryAction = NpcPrimaryActions.Thinking;
 		}
 
+		public void ClearAction()
+        {
+			if (PrimaryActionCoroutine != null) StopCoroutine(PrimaryActionCoroutine);
+			PrimaryAction = NpcPrimaryActions.Thinking;
+        }
 
 		public IEnumerator IActionSurvive()
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionSurvive()");
+			
 			yield return new WaitForFixedUpdate();
 
-			NpcBehaviour NpcThug = xxx.ClosestNpc( this, MyFights, true);
-
-			if ( !NpcThug )
+			if ( !MyTargets.enemy )
 			{
-				StartCoroutine(IActionWait());
+				ClearAction();
 				yield break;
 			}
 
@@ -1494,9 +1729,14 @@ namespace PPnpc
 					break;
 
 				case 2:
-					RB["UpperBody"].AddForce((MyTargets.item.transform.position - Head.position).normalized * TotalWeight * 2f, ForceMode2D.Impulse);
-					yield return new WaitForFixedUpdate();
-					CommonPoses["prone"].RunMove();
+					if (MyTargets.item) { 
+						RB["UpperBody"].AddForce((MyTargets.item.transform.position - Head.position).normalized * TotalWeight * 2f, ForceMode2D.Impulse);
+						yield return new WaitForFixedUpdate();
+						CommonPoses["prone"].RunMove();
+					} else
+                    {
+						PBO.OverridePoseIndex = (int)PoseState.Flat;
+                    }
 					break;
 
 				case 3:
@@ -1508,28 +1748,27 @@ namespace PPnpc
 
 			bool TriggerRecover = false;
 
-			while (NpcThug && Time.time < MaxTimeWait)
+			while (MyTargets.enemy && Time.time < MaxTimeWait && !CancelAction )
 			{
-				if ( !MyFights.Contains( NpcThug ) && !TriggerRecover )
+				if ( !MyFights.Contains( MyTargets.enemy ) && !TriggerRecover )
 				{
 					TriggerRecover = true;
 					MaxTimeWait    = Time.time + xxx.rr(2,5);
 				}
 
-				yield return new WaitForFixedUpdate();
-
-				//ThreatLevel -= Time.fixedDeltaTime;
 				Mojo.Feel("Chicken", Time.fixedDeltaTime * 5f);
 
 				RB["LowerArm"].AddForce(Vector2.down * TotalWeight * Time.fixedDeltaTime * xxx.rr(100f, 300f));
 				RB["LowerArmFront"].AddForce(Vector2.down * TotalWeight * Time.fixedDeltaTime * xxx.rr(100f, 300f));
 
-				MyNpcPose.RunMove();
+				//MyNpcPose.RunMove();
 
 				if (CheckInterval(1.5f) && CheckRandomSituations(true)) {
 					NpcPose.Clear(PBO);
 					yield break;
 				}
+
+				yield return new WaitForFixedUpdate();
 			}
 
 			NpcPose.Clear(PBO);
@@ -1540,9 +1779,9 @@ namespace PPnpc
 
 		public IEnumerator IActionTakeCover()
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionTakeCover()");
 			yield return new WaitForFixedUpdate();
 
-			ModAPI.Notify("Taking Cover!");
 
 			if ( !MyTargets.item)
 			{
@@ -1569,7 +1808,7 @@ namespace PPnpc
 			
 			float MaxTimeWait = Time.time + 10f;
 
-			while (MyTargets.item && Time.time < MaxTimeWait)
+			while (MyTargets.item && Time.time < MaxTimeWait && !CancelAction)
 			{
 				if ( !xxx.AimingTowards(MyTargets.item.transform, Head))
 				{
@@ -1589,15 +1828,16 @@ namespace PPnpc
 
 		public IEnumerator IActionScavenge()
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionScavenge()");
 			if (!MyTargets.prop)
 			{
-				StartCoroutine(IActionWait());
+				ClearAction();
 				yield break;
 			}
 
-			float dist;
+			float dist = float.MaxValue;
 
-			while ( MyTargets.prop && !MyTargets.prop.P.beingHeldByGripper )
+			while ( MyTargets.prop && !MyTargets.prop.P.beingHeldByGripper && !CancelAction)
 			{
 				Vector3 target = MyTargets.prop.transform.position;
 
@@ -1625,10 +1865,95 @@ namespace PPnpc
 				
 			}
 
+			//	Check if we got the item
+			if (Mathf.Abs(dist) > 1f) Mojo.Feel("Annoyed", 5f);
+
 			PrimaryAction               = NpcPrimaryActions.Thinking;
 			//PBO.OverridePoseIndex       = (int)PoseState.Rest;
 			PBO.DesiredWalkingDirection = 0;
 		}
+
+
+		public IEnumerator IActionRecruit()
+		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionRecruit()");
+			if (!MyTargets.person)
+			{
+				ClearAction();
+				yield break;
+			}
+
+			float dist = float.MaxValue;
+
+			Transform head = MyTargets.person.Limbs[0].transform;
+			
+
+			NpcHand hand = (FH.IsHolding && FH.Tool.props.canRecruit) ? FH : BH;
+
+			NoGhost.Add(head.root);
+
+			hand.Tool.NoGhost.Add(head.root);
+
+			NpcGadget gadget = hand.Tool.P.GetComponent<NpcGadget>();
+			if (!gadget) { ClearAction(); yield break; }
+
+
+			xxx.ToggleCollisions(head,Head,true,true);
+			xxx.ToggleCollisions(head.root,hand.Tool.P.transform,true,false);
+
+			Coroutine pointy = null;
+
+			while ( MyTargets.person && !CancelAction && hand.GB.isHolding)
+			{
+				Vector3 target = head.position;
+
+				if (!FacingToward(target)) {
+					
+					Flip();
+					yield return new WaitForFixedUpdate();
+				}
+
+				if (CheckInterval(0.5f) && TeamId != gadget.TeamId ) gadget.Use(null);
+
+				dist = Head.position.x - target.x;
+
+				if (Mathf.Abs(dist) < 2.0f && pointy == null) pointy = hand.StartCoroutine(hand.IPoint(head));
+
+				if (Mathf.Abs(dist) > 0.5f)
+				{
+					if (PBO.DesiredWalkingDirection < 1f) PBO.DesiredWalkingDirection = 5f;
+					
+					yield return new WaitForSeconds(0.1f);
+				} 
+				else
+				if (Mathf.Abs(dist) < 0.1f)
+                {
+					if (PBO.DesiredWalkingDirection > -1f) PBO.DesiredWalkingDirection = -5f;
+                }
+				else
+                {
+					PBO.DesiredWalkingDirection = 0f;
+					yield return new WaitForSeconds(3.5f);
+					if (pointy != null) hand.StopCoroutine(pointy);
+					break;
+                }
+				
+
+				
+				if (Mathf.Abs(dist) < 0.5f) break;
+
+				yield return new WaitForFixedUpdate();
+
+				
+			}
+			NoGhost.Remove(head.root);
+			//	Check if we got the item
+
+			PrimaryAction               = NpcPrimaryActions.Thinking;
+			//PBO.OverridePoseIndex       = (int)PoseState.Rest;
+			PBO.DesiredWalkingDirection = 0;
+		}
+
 
 		private float IntervalTime = 0f;
 		private float LastInterval = 0f;
@@ -1651,6 +1976,7 @@ namespace PPnpc
 
 		public IEnumerator IActionGroupUp(bool regroup=false)
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionGroupup()");
 			PrimaryAction = regroup ? NpcPrimaryActions.Regroup : NpcPrimaryActions.GroupUp;
 			float dist = 0f;
 
@@ -1731,6 +2057,7 @@ namespace PPnpc
 
 		public IEnumerator IActionShoot(bool isDefense=false)
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionShoot()");
 			PrimaryAction = NpcPrimaryActions.Fight;
 
 			
@@ -1747,12 +2074,10 @@ namespace PPnpc
 			if (!MyTargets.enemy.MyFights.Contains(this)) {
 				MyTargets.enemy.MyFights.Add(this);
 			}
-
 			if ( MyTargets.enemy && xxx.ValidateEnemyTarget(MyTargets.enemy.PBO) && MyTargets.enemy.ThreatLevel > 0 )
 			{
 				NpcHand hand = Hands.PickRandom();
-				if (!hand.IsHolding) hand = hand.AltHand;
-
+				if (!hand.IsHolding || !hand.Tool.props.canShoot) hand = hand.AltHand;
 
 		
 				if (FH.IsHolding || BH.IsHolding)
@@ -1761,25 +2086,26 @@ namespace PPnpc
 					
 					bool showMercy = xxx.rr(1,100) <= Mojo.Traits["Mean"] + Mojo.Feelings["Angry"] / 2;
 
-					while ( CanThink() && MyTargets.enemy && MyTargets.enemy.PBO && xxx.ValidateEnemyTarget(MyTargets.enemy.PBO) )
+					while ( CanThink() && MyTargets.enemy && MyTargets.enemy.PBO && xxx.ValidateEnemyTarget(MyTargets.enemy.PBO) && !CancelAction )
 					{
 						if (MyTargets.enemy.ThreatLevel <= 0 && showMercy) break;
 
 						hand.FireAtWill = false;
 
 						if (!FacingToward(MyTargets.enemy.Head.position)) { Flip(); yield return new WaitForFixedUpdate(); }
-
 						//
 						//	Decide which hand to use
 						//
 						hand = Hands.PickRandom();
-						if (!hand.IsHolding) hand = hand.AltHand;
+						if (!hand || !hand.IsHolding || !hand.Tool.props.canShoot) hand = hand.AltHand;
 
 						//
 						//	Decide Aiming Pose
 						//
-						AimStyles aimStyle = hand.Tool.props.AimStyle();
-					
+						if (!hand || !hand.Tool || !hand.Tool.P) break;
+
+						CurrentAimStyle = hand.Tool.props.AimStyle(this, MyTargets.enemy);
+
 						//
 						//	Decide how long to hesitate before firing
 						//
@@ -1790,7 +2116,6 @@ namespace PPnpc
 						//	Decide which limb to aim for
 						//
 						LimbBehaviour limbTarget = MyTargets.enemy.PBO.Limbs.PickRandom();
-
 						if (!limbTarget || !limbTarget.PhysicalBehaviour) break;
 
 						hand.Target(limbTarget.PhysicalBehaviour);
@@ -1803,7 +2128,7 @@ namespace PPnpc
 						bool doCommonPose = false;
 						float timerHesitate = 0;
 
-						switch( aimStyle )
+						switch( CurrentAimStyle )
 						{
 							case AimStyles.Rockets:
 								minDist      = 10;
@@ -1826,7 +2151,6 @@ namespace PPnpc
 								hesitate    += 1f;
 								break;
 						}
-						
 						float prefDistance    = xxx.rr(minDist, maxDist);
 						float threshDist      = Mathf.RoundToInt((maxDist - minDist) / 2);
 						bool poseLocked		  = false;
@@ -1839,7 +2163,7 @@ namespace PPnpc
 						timerHesitate = Time.time + hesitate;
 						
 
-						while ( CanThink() && MyTargets.enemy && MyTargets.enemy.PBO && xxx.ValidateEnemyTarget(MyTargets.enemy.PBO) && Time.time < aimTime )
+						while ( CanThink() && MyTargets.enemy && MyTargets.enemy.PBO && xxx.ValidateEnemyTarget(MyTargets.enemy.PBO) && Time.time < aimTime && !CancelAction)
 						{
 							dist = Head.position.x - MyTargets.enemy.Head.position.x;
 
@@ -1853,51 +2177,50 @@ namespace PPnpc
 							else if (!poseLocked && Mathf.Abs(dist) < prefDistance - threshDist)
 							{
 							//    NpcPose.Clear(PBO);
-								
 								if (PBO.DesiredWalkingDirection > -1f) PBO.DesiredWalkingDirection = -10f;
-							} 
-							//else 
-							//{
-							//    PBO.DesiredWalkingDirection = 0f;
-							//    if (!poseLocked && (aimStyle != AimStyles.Standard || !isDefense)) timerHesitate = Time.time + hesitate;
-							//    if (doCommonPose) {
-									
-							//        if (aimStyle == AimStyles.Crouched || aimStyle == AimStyles.Rockets) CommonPoses["crouch"].RunMove();
-							//        else if (aimStyle == AimStyles.Proned) {
-							//            if (!poseLocked)
-							//            {
-							//                if (RB["UpperBody"]) RB["UpperBody"].AddForce((MyTargets.enemy.Head.position - Head.position).normalized * TotalWeight * 2.5f, ForceMode2D.Impulse);
-							//                if (RB["Foot"]) RB["Foot"].AddForce((MyTargets.enemy.Head.position - Head.position).normalized * TotalWeight * -2f, ForceMode2D.Impulse);
-							//                yield return new WaitForFixedUpdate();
-							//            }
-							//            CommonPoses["prone"].RunMove();
-							//            if (LB["Head"].IsOnFloor) break;
-							//        }
+							}
+                            else
+                            {
+                                PBO.DesiredWalkingDirection = 0f;
+                                // if ( !poseLocked && ( CurrentAimStyle != AimStyles.Standard || !isDefense ) ) timerHesitate = Time.time + hesitate;
+                                if ( doCommonPose )
+                                {
 
-							//    }
+                                    if ( CurrentAimStyle == AimStyles.Crouched || CurrentAimStyle == AimStyles.Rockets ) CommonPoses["crouch"].RunMove();
+                                    else if ( CurrentAimStyle == AimStyles.Proned )
+                                    {
+                                        if ( !poseLocked )
+                                        {
+                                            if ( RB["UpperBody"] ) RB["UpperBody"].AddForce( ( MyTargets.enemy.Head.position - Head.position ).normalized * TotalWeight * 2.5f, ForceMode2D.Impulse );
+                                            if ( RB["Foot"] ) RB["Foot"].AddForce( ( MyTargets.enemy.Head.position - Head.position ).normalized * TotalWeight * -2f, ForceMode2D.Impulse );
+                                            yield return new WaitForFixedUpdate();
+											if (!hand.FireAtWill && Time.time > timerHesitate) hand.FireAtWill = true;
+                                        }
+                                        CommonPoses["prone"].RunMove();
+                                        if ( LB["Head"].IsOnFloor ) break;
+                                    }
 
-							//    if (aimStyle != AimStyles.Standard) poseLocked  = true;
+                                }
 
-							//}
-							if (!hand.FireAtWill && Time.time > timerHesitate) hand.FireAtWill = true;
+                                if ( CurrentAimStyle != AimStyles.Standard ) poseLocked = true;
+
+                            }
+                            if (!hand.FireAtWill && Time.time > timerHesitate) hand.FireAtWill = true;
 
 							yield return new WaitForFixedUpdate();
 						}
 
 					}
-
 					if (PBO) NpcPose.Clear(PBO);
 					
-					hand.Aiming = hand.IsAiming = false;
+					hand.IsAiming = hand.AltHand.IsAiming = false;
 
 					//hand.AimAt = null;
 
-					hand.FireAtWill = false;
-
+					hand.FireAtWill = hand.AltHand.FireAtWill = false;
 					yield return new WaitForEndOfFrame();
 					
 				}
-
 				if (MyTargets.enemy) { 
 					if (MyTargets.enemy.MyFights.Contains(this)) MyTargets.enemy.MyFights.Remove(this);
 					if (MyFights.Contains(MyTargets.enemy)) MyFights.Remove(MyTargets.enemy);
@@ -1918,6 +2241,7 @@ namespace PPnpc
 
 		public IEnumerator IActionDefend(NpcBehaviour npcEnemy = null)
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionDefend()");
 			PrimaryAction = NpcPrimaryActions.Defend;
 
 			if (npcEnemy == null) npcEnemy = MyTargets.enemy;
@@ -1977,7 +2301,7 @@ namespace PPnpc
 
 				PBO.DesiredWalkingDirection = 0;
 					
-				hand.Aiming = hand.IsAiming = false;
+				hand.IsAiming = false;
 
 				//hand.AimAt = null;
 
@@ -1996,6 +2320,7 @@ namespace PPnpc
 
 		public IEnumerator IActionDive( Vector3 position )
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionDive()");
 			PrimaryAction = NpcPrimaryActions.Dive;
 			LastInterval = 0;
 
@@ -2040,9 +2365,54 @@ namespace PPnpc
 		}
 
 
+		public IEnumerator IActionDisco()
+		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionDisco()");
+			
+			PrimaryAction = NpcPrimaryActions.Disco;
+			LastInterval  = 0;
+
+			float DanceTimer = Time.time + xxx.rr(5,30);
+
+			if (! MyTargets.item.TryGetComponent<JukeboxBehaviour>( out JukeboxBehaviour juke ) )
+            {
+				ClearAction();
+				yield break;
+            }
+
+
+			while ( juke && juke.audioSource.isPlaying && Time.time > DanceTimer )
+            {
+				float interval = xxx.rr(0.5f, 2.5f);
+				while ( !CheckInterval( interval ) )
+                {
+					MyNpcPose = new NpcPose(this, "disco1", false);
+
+					yield return new WaitForFixedUpdate();
+                }
+				
+				LastInterval = 0;
+
+				interval = xxx.rr(0.5f, 2.5f);
+
+				while ( !CheckInterval( interval ) )
+                {
+					MyNpcPose = new NpcPose(this, "disco2", false);
+
+					yield return new WaitForFixedUpdate();
+                }
+            }
+
+			
+			
+			PrimaryAction   = NpcPrimaryActions.Thinking;
+
+		}
+
 		public IEnumerator IActionDefendPerson(PersonBehaviour pbEnemy= null)
 		{
-			PrimaryAction = NpcPrimaryActions.Defend;
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionDefendPerson()");
+			PrimaryAction = NpcPrimaryActions.DefendPerson;
 
 			if (pbEnemy == null) pbEnemy = MyTargets.person;
 
@@ -2065,8 +2435,8 @@ namespace PPnpc
 			}
 
 
-			NpcHand[] hands = {FH,BH};
-			NpcHand hand = hands.PickRandom();
+			NpcHand[] hands           = {FH,BH};
+			NpcHand hand              = hands.PickRandom();
 			if (!hand.IsHolding) hand = hand.AltHand;
 
 
@@ -2091,7 +2461,7 @@ namespace PPnpc
 						yield return new WaitForFixedUpdate();
 					}
 
-					if (Mathf.Abs(dist) < 10f) 
+					if (Mathf.Abs(dist) < 5f) 
 					{
 						if (PBO.DesiredWalkingDirection > -1f) PBO.DesiredWalkingDirection = -10f;
 						
@@ -2102,7 +2472,7 @@ namespace PPnpc
 
 				PBO.DesiredWalkingDirection = 0;
 					
-				hand.Aiming = hand.IsAiming = false;
+				hand.IsAiming = false;
 
 				//hand.AimAt = null;
 
@@ -2119,21 +2489,159 @@ namespace PPnpc
 			PrimaryAction   = NpcPrimaryActions.Thinking;
 		}
 
+		
+		public IEnumerator IActionFidget()
+        {
+
+			if (!MyTargets.item)
+			{
+				ClearAction();
+				yield break;
+			}
+
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionFidget()");
+
+			MyTargets.item.spriteRenderer.sortingLayerName = "Background";
+			MyTargets.item.spriteRenderer.sortingOrder     = -10;
+			
+
+			float dist       = float.MaxValue;
+			bool pickedHand  = false;
+			Coroutine pointy = null;
+			
+			if (new string[]{"Jukebox","Television","Radio" }.Contains( MyTargets.item.name ) )
+            {
+				ActivityMessage.Set("Fidget with " + MyTargets.item.name, 5f);
+            } else
+            {
+				ClearAction();
+				yield break;
+            }
+
+			if (!FacingToward(MyTargets.item.transform.position)) {
+					
+				Flip();
+				yield return new WaitForFixedUpdate();
+			}
+
+			while ( MyTargets.item && !CancelAction )
+			{
+				dist = Vector2.Distance(Head.position, MyTargets.item.transform.position);
+
+				if (Mathf.Abs(dist) > 1.7f)
+				{
+					if (PBO.DesiredWalkingDirection < 1f) PBO.DesiredWalkingDirection = 5f;
+					
+				} 
+				else
+				if (Mathf.Abs(dist) < 1.0f)
+                {
+					if (PBO.DesiredWalkingDirection > -1f) PBO.DesiredWalkingDirection = -5f;
+                }
+				else
+                {
+					PBO.DesiredWalkingDirection = 0f;
+					if ( !pickedHand )
+					{
+						pickedHand               = true;
+						hand                     = RandomHand;
+						if (hand.IsHolding) hand = hand.AltHand;
+						pointy                   = hand.StartCoroutine(hand.IPointArm(MyTargets.item.transform));
+						yield return new WaitForSeconds(2);
+						
+
+						
+						//MyTargets.item.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
+						Mojo.Feelings["Bored"] = 0;
+						yield return new WaitForSeconds(1);
+						JukeboxBehaviour juke = null;
+						if (MyTargets.item )
+                        {
+                            switch ( MyTargets.item.name )
+                            {
+								case "Jukebox":
+									if ( !MyTargets.item.TryGetComponent<JukeboxBehaviour>( out juke ) )
+									{
+										ClearAction();
+										yield break;
+									}
+
+									juke.tracks = NpcMain.JukeBox;
+									juke.NextSong();
+
+									hand.StopCoroutine(pointy);
+
+                                    if ( juke && juke.audioSource && juke.audioSource.isPlaying )
+                                    {
+                                        EventInfo MyEvent = new EventInfo();
+										MyEvent.Expires = 10;
+										MyEvent.EventId = EventIds.Jukebox;
+										//MyEvent
+                                        //{
+                                        //    EventId   = EventIds.Jukebox,
+                                        //    Expires   = 30f,
+                                        //    Locations = {MyTargets.item.transform.position },
+                                        //    PBs       = {juke.physicalBehaviour },
+                                        //    Sender    = this,
+                                        //};
+
+                                        //NpcEvents.BroadcastEvent( MyEvent, MyTargets.item.transform.position, 20f );
+                                    }
+                                    break;
+
+
+								case "Television":
+									if ( MyTargets.item.TryGetComponent<TelevisionBehaviour>( out TelevisionBehaviour tv) )
+                                    {
+										if ( tv.Activated )
+                                        {
+											NpcEvents.BroadcastEvent(new EventInfo() { 
+												EventId   = EventIds.TV,
+												Expires   = 30f,
+												Locations = {tv.transform.position },
+												PBs       = {MyTargets.item},
+												Sender    = this,
+											}, tv.transform.position, 10f);
+                                        }
+									}
+									break;			
+
+                            }
+                        }
+
+                        CancelAction = true;
+					}
+					break;
+				}
+
+				yield return new WaitForFixedUpdate();
+			}
+
+			PrimaryAction               = NpcPrimaryActions.Thinking;
+			//PBO.OverridePoseIndex       = (int)PoseState.Rest;
+			PBO.DesiredWalkingDirection = 0;
+
+			yield break;
+        }
+
 
 		public IEnumerator IActionFightFire()
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionFightFire()");
 			PrimaryAction = NpcPrimaryActions.FightFire;
 			float dist    = 0f;
 			NpcHand hand  = (FH.IsHolding && FH.Tool.props.canFightFire) ? FH : BH;
-
-			if (MyTargets.item && MyTargets.item == LB["MiddleBody"].PhysicalBehaviour)
-			{
+			hand.AimStyle = AimStyles.Spray;
+			while ( xxx.NPCOnFire( this ) )
+            {
 				//	Self caught on fire
-				if (hand.Tool.Facing != Facing)
-				{
-					Utilities.FlipUtility.Flip(hand.Tool.P);
-					yield return new WaitForFixedUpdate();
-				}
+				ActivityMessage.Set("I'm on fire!", 5f);
+
+				Utilities.FlipUtility.ForceFlip(hand.Tool.P);
+				Debug.Log("Flipped " + hand.Tool.P.name);
+				yield return new WaitForEndOfFrame();
+				
+
 				Vector3 pos1 = Head.position + (Vector3.right * -Facing * 2f);
 				Vector3 pos2 = LB["Foot"].transform.position;
 					
@@ -2145,12 +2653,9 @@ namespace PPnpc
 					hand.Tool.Activate(true);
 					yield return new WaitForFixedUpdate();
 				}
-
-				if (hand.Tool.Facing == Facing)
-				{
-					Utilities.FlipUtility.Flip(hand.Tool.P);
-					yield return new WaitForFixedUpdate();
-				}
+				
+				Utilities.FlipUtility.ForceFlip(hand.Tool.P);
+				Debug.Log("Flipped " + hand.Tool.P.name);
 
 				fireTime = Time.time + 5;
 				while (Time.time < fireTime)
@@ -2161,23 +2666,26 @@ namespace PPnpc
 					yield return new WaitForFixedUpdate();
 				}
 
-				if (hand.Tool.Facing != Facing)
-				{
-					Utilities.FlipUtility.Flip(hand.Tool.P);
-					yield return new WaitForFixedUpdate();
-				}
+				
 			}
 
-			if (!MyTargets.item || !MyTargets.item.OnFire)
+			if (hand.Tool.Facing != Facing)
 			{
-				StartCoroutine(IActionWait());
+				Utilities.FlipUtility.ForceFlip(hand.Tool.P);
+				Debug.Log("Flipped " + hand.Tool.P.name);
+				yield return new WaitForFixedUpdate();
+			}
+
+			if (!MyTargets.item || !MyTargets.item.OnFire || !Head)
+			{
+				ClearAction();
 				yield break;
 			}
 
 
 			if (!hand.Tool || !hand.Tool.P)
 			{
-				StartCoroutine(IActionWait());
+				ClearAction();
 				yield break;
 			}
 
@@ -2190,7 +2698,6 @@ namespace PPnpc
 					//Vector3 target = MyTargets.item.transform.position;
 					//Vector3 target = MyTargets.item.transform.position;
 					Vector3 target = MyTargets.item.colliders[0].ClosestPoint(Head.position);
-
 					if (!FacingToward(target)) {
 					
 						Flip();
@@ -2217,7 +2724,7 @@ namespace PPnpc
 				
 				PBO.DesiredWalkingDirection = 0;
 				//PBO.OverridePoseIndex = (int)PoseState.Rest;
-
+				if (!MyTargets.item) ClearAction();
 				hand.Target(MyTargets.item);
 
 				float walkTimer = Time.time + 3f;
@@ -2274,13 +2781,13 @@ namespace PPnpc
 			}
 
 			FireProof                   = false;
-			PBO.DesiredWalkingDirection = 0;
 			PrimaryAction               = NpcPrimaryActions.Thinking;
 		}
 
 
 		public IEnumerator IActionWatchEvent()
 		{
+			if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[action]: IActionWatchEvent()");
 			PrimaryAction = NpcPrimaryActions.WatchEvent;
 			float dist = 0f;
 
@@ -2290,7 +2797,7 @@ namespace PPnpc
 				yield break;
 			}
 
-			while ( MyTargets.item )
+			while ( MyTargets.item && !CancelAction)
 			{
 				Vector3 target = MyTargets.item.transform.position;
 
@@ -2322,35 +2829,86 @@ namespace PPnpc
 			PrimaryAction               = NpcPrimaryActions.Thinking;
 		}
 
+		float glitchfloat = 1;
+		int glitchCount = 0;
+		public IEnumerator IGlitch()
+		{
+			int x = xxx.rr(0,10);
+			Color[] colors =
+            {
+				Color.gray, Color.yellow, Color.blue, Color.green, Color.red, Color.grey, Color.gray, Color.grey, Color.gray, Color.grey
+            };
+
+			for (; ; )
+            {
+				yield return new WaitForSeconds(xxx.rr(1,10) * glitchfloat);
+				if (++glitchCount > 50) break;
+				glitchfloat *= 0.9f;
+				LimbBehaviour limb = PBO.Limbs.PickRandom();
+				ModAPI.CreateParticleEffect("Flash", limb.transform.position);
+				limb.PhysicalBehaviour.rigidbody.AddForce(UnityEngine.Random.insideUnitCircle * xxx.rr(1,10), ForceMode2D.Impulse);
+				ModAPI.CreateParticleEffect("FuseBlown", Head.position);
+				LB["Head"].PhysicalBehaviour.spriteRenderer.color = Color.Lerp(LB["Head"].PhysicalBehaviour.spriteRenderer.color, colors[x], xxx.rr(1,10) * Time.fixedDeltaTime);
+            }
+
+			// if survived, chance for enhancement reward
+            switch ( x )
+            {
+				case 1:
+					Enhancements.Vision = xxx.rr(35,70);
+					break;
+
+				case 2:
+					Enhancements.Medic = true;
+					break;
+
+				case 3:
+					Enhancements.Aiming = xxx.rr(50, 100);
+					break;
+
+				case 4:
+					Enhancements.Processing = xxx.rr(1.0f, 5.0f);
+					break;
+            }
+
+
+        }
+
+
+        public void CalculateThreatLevel()
+        {
+			Mojo.Feelings["Chicken"] *= 0.5f;
+			Mojo.Feel("Tired", 1f);
+			Mojo.Feel("Hungry", xxx.rr(0.1f, 1.1f));
+
+			_threatLevel = Config.BaseThreatLevel;
+			
+			_threatLevel += PBO.AverageHealth - 14f;
+
+			_threatLevel += 5f - LB["UpperBody"].BaseStrength;
+
+			MyBlood = 0f;
+			foreach (LimbBehaviour limb in PBO.Limbs)
+			MyBlood += limb.CirculationBehaviour.TotalLiquidAmount;
+
+			MyBlood /= PBO.Limbs.Length;
+				
+
+			if (FH.IsHolding && FH.Tool) _threatLevel += FH.Tool.props.ThreatLevel;
+			if (BH.IsHolding && BH.Tool) _threatLevel += BH.Tool.props.ThreatLevel;
+			_threatLevel *= MyBlood;
+			_threatLevel -= Mojo.Feelings["Chicken"];
+
+			//if (!npc.IsUpright) threatLevel *= 0.5f;
+        }
+
 
 		public IEnumerator IFeelings()
 		{
 			for (; ; )
 			{
-				Mojo.Feelings["Chicken"] *= 0.5f;
-				Mojo.Feel("Tired", 1f);
-				Mojo.Feel("Hungry", xxx.rr(0.1f, 1.1f));
-
-				_threatLevel = Config.BaseThreatLevel;
-			
-				_threatLevel += PBO.AverageHealth - 14f;
-
-				_threatLevel += 5f - LB["UpperBody"].BaseStrength;
-
-				MyBlood = 0f;
-				foreach (LimbBehaviour limb in PBO.Limbs)
-				MyBlood += limb.CirculationBehaviour.TotalLiquidAmount;
-
-				MyBlood /= PBO.Limbs.Length;
 				
-
-				if (FH.IsHolding && FH.Tool) _threatLevel += FH.Tool.ThreatLevel;
-				if (BH.IsHolding && BH.Tool) _threatLevel += BH.Tool.ThreatLevel;
-				_threatLevel *= MyBlood;
-				_threatLevel -= Mojo.Feelings["Chicken"];
-
-				//if (!npc.IsUpright) threatLevel *= 0.5f;
-
+				CalculateThreatLevel();
 
 				yield return new WaitForSeconds(5);
 			}
@@ -2358,7 +2916,7 @@ namespace PPnpc
 
 		public IEnumerator IGuessShooter(Vector2 direction)
 		{
-			if (direction.x < 0 && Facing < 0) {
+			if (Mathf.Sign(direction.x) == Mathf.Sign(Facing)) {
 				Flip();
 				yield return new WaitForFixedUpdate();
 				yield return new WaitForEndOfFrame();
@@ -2366,10 +2924,39 @@ namespace PPnpc
 				yield return new WaitForEndOfFrame();
 			}
 
-			ScanAhead();
+			//ScanResultsCount = Physics2D.OverlapBox(ScanStart, ScanStop, 0f, filter, ScanResults);
+			ScanTimeExpires = 0f;
+			ScanAhead(30);
+
+			NpcBehaviour enemy = null;
+
+			if (MyFights.Count > 0)
+            {
+
+				for(int i = MyFights.Count; --i >= 0;)
+                {
+					if (!MyFights[i]|| !MyFights[i].PBO) continue;
+
+                }
+            }
+
 
 			for ( int i = -1; ++i < ScanResultsCount; )
 			{
+				if ( ScanResults[i].transform.root.TryGetComponent<NpcBehaviour>( out enemy ) )
+				{
+					if (MyFights.Contains(enemy) && enemy.IsAiming) { 
+						MyTargets.enemy = enemy;
+						ActivityMessage.Set(enemy.Config.Name + " shot me!", 2);
+						if (!DefenseActions.Contains(PrimaryAction))
+                        {
+							if (PrimaryActionCoroutine != null) StopCoroutine(PrimaryActionCoroutine);
+							if (HasGun) PrimaryActionCoroutine = StartCoroutine(IActionSurvive());
+							else PrimaryActionCoroutine = StartCoroutine(IActionDefend(MyTargets.enemy));
+							yield break;
+                        }
+					}
+				}
 				if ( ScanResults[i].transform.root.TryGetComponent<GripBehaviour>( out GripBehaviour grip ) )
 				{
 					if ( grip && grip.isHolding )
@@ -2385,6 +2972,8 @@ namespace PPnpc
 				}
 			}
 			
+			ActivityMessage.Set("Who shot me?", 1f);
+
 			yield break;
 		}
 
@@ -2463,11 +3052,7 @@ namespace PPnpc
 
 		public virtual void Selected(object sender, PhysicalBehaviour pb)
 		{
-			if ( Config.ShowStatsOnClick ) Mojo.ShowStats();
-			
-			HoverStats = Head.gameObject.GetOrAddComponent<NpcHoverStats>();
-
-			HoverStats.ToggleStats(this);
+			NpcHoverStats.Toggle(this);
 		}
 
 		
@@ -2535,9 +3120,146 @@ namespace PPnpc
 			}
 		}
 
+		//
+		// ─── RUN RIGIDS ────────────────────────────────────────────────────────────────
+		//
+		public void RunRigids(Action<Rigidbody2D> action)
+		{
+			foreach (Rigidbody2D rigid in RB.Values) { action(rigid); }
+		}
+
+		public void RunRigids<t>(Action<Rigidbody2D, t> action, t option)
+		{
+			foreach (Rigidbody2D rigid in RB.Values) { action(rigid, option); }
+		}
+
+		public void RigidInertia(Rigidbody2D rb, float option) => rb.inertia = (option == -1) ? RigidOriginals[rb.name].inertia : option;
+		public void RigidMass(Rigidbody2D rb, float option) => rb.mass = (option == -1) ? RigidOriginals[rb.name].mass : option;
+		public void RigidAddMass(Rigidbody2D rb, float option) => rb.mass *= option;
+		public void RigidDrag(Rigidbody2D rb, float option) => rb.drag = (option == -1) ? RigidOriginals[rb.name].drag : option;
+		public void BodyInertiaFix(Rigidbody2D rb) => SetRigidOriginal(rb.name);
+		public void RigidReset(Rigidbody2D rb)
+		{
+			rb.mass           = RigidOriginals[rb.name].mass;
+			rb.drag           = RigidOriginals[rb.name].drag;
+			rb.inertia        = RigidOriginals[rb.name].inertia;
+			rb.angularDrag    = RigidOriginals[rb.name].angularDrag;
+			rb.freezeRotation = false;
+		}
+
+
+		public void RigidStop(Rigidbody2D rb)
+		{
+			rb.velocity        = Vector2.zero;
+			rb.angularVelocity = 0f;
+		}
+		//
+		// ─── SET RIGID ORIGINAL ────────────────────────────────────────────────────────────────
+		//
+		public void SetRigidOriginal(string rigidName, string propName="")
+		{
+			List<string> props = new List<string>() { "mass", "drag", "inertia" };
+
+			if (propName != "") {
+				props.Clear();
+				props.Add(propName);
+			}
+
+			foreach (string pname in props)
+			{
+				if (RigidOriginals.TryGetValue(rigidName, out RigidSnapshot rigidOG))
+				{
+					switch(pname)
+					{
+						case "mass":
+							RB[ rigidName ].mass = rigidOG.mass;
+							break;
+
+						case "drag":
+							RB[rigidName].drag = rigidOG.drag;
+							break;
+
+						case "inertia":
+							RB[rigidName].inertia = rigidOG.inertia;
+							break;
+					}
+
+				}
+			}
+		}
+
+
+		public void SavePoses()
+		{
+			PoseSnapshots.Clear();
+			for ( int i = PBO.Poses.Count; --i >= 1; )
+			{
+				RagdollPose Pose = PBO.Poses[i];
+
+				if ( Pose == null || Pose.Name == null || Pose.AngleDictionary == null || Pose.AngleDictionary.Count == 0) continue;
+
+				//foreach ( KeyValuePair<LimbBehaviour, RagdollPose.LimbPose> pair in PBO.Poses[i].AngleDictionary )
+				//{
+
+				//}
+
+				LimbPoseSnapshot LPS = new LimbPoseSnapshot();
+
+				LPS.DLimbs = new Dictionary<string, RagdollPose.LimbPose>();
+
+				foreach ( KeyValuePair<LimbBehaviour, RagdollPose.LimbPose> pair in Pose.AngleDictionary )
+				{
+					if ( pair.Key.name.Contains( "Arm" ) )
+					{
+						LPS.DLimbs.Add(pair.Key.name, pair.Value);
+					}
+				}
+
+				PoseSnapshots.Add(Pose.Name, LPS);
+			}
+
+			//foreach ( KeyValuePair<PoseState, RagdollPose> pair in PBO.LinkedPoses )
+			//{
+			//    PBO.LinkedPoses[pair.Key].ShouldStumble = false;
+			//}
+
+		}
+
+		public void ResetPoses()
+		{
+			ResetPoses(LB["LowerArm"], LB["UpperArm"], LB["LowerArmFront"], LB["UpperArmFront"]);
+
+		}
+
+		public void ResetPoses( params LimbBehaviour[] limbs )
+		{
+			string poseName;
+			for ( int i = PBO.Poses.Count; --i >= 1; )
+			{
+				poseName = PBO.Poses[i].Name;
+				if ( PoseSnapshots.ContainsKey( poseName ) )
+				{
+					foreach ( LimbBehaviour limb in limbs )
+					{
+						if ( PBO.Poses[i].AngleDictionary.ContainsKey( limb ) )
+							PBO.Poses[i].AngleDictionary[limb] = PoseSnapshots[poseName].DLimbs[limb.name];
+					}
+				}
+			}
+		}
+
 
 		void Setup()
 		{
+
+			if ( isSetup )
+            {
+				StartCoroutine(IGlitch());
+				return;
+            }
+
+			isSetup		        = true; 
+
 			
 			if ( !Global.main.TryGetComponent<Utilities.FlipUtility>( out _ ) )
 			{
@@ -2549,11 +3271,23 @@ namespace PPnpc
 			LimbBehaviour[] LBs = PBO.transform.GetComponentsInChildren<LimbBehaviour>();
 			Mojo                = new NpcMojo(this);
 			
+			Config.SetName(PBO.name);
+
 			TotalWeight = 0f;
 
 			foreach (Rigidbody2D rb in RBs)   {
-				RB.Add(rb.name, rb);
+
+				RB[rb.name] = rb;
 				TotalWeight += rb.mass;
+
+				RigidSnapshot RBOG = new RigidSnapshot()
+				{
+					drag    = rb.drag,
+					inertia = rb.inertia,
+					mass    = rb.mass,
+				};
+
+				RigidOriginals[rb.name] = RBOG;
 			}
 			
 			foreach (LimbBehaviour lb in LBs) {
@@ -2570,7 +3304,10 @@ namespace PPnpc
 			Head		        = LB["Head"].transform;
 			
 			NpcId               = PBO.GetHashCode();
-			isSetup		        = true; 
+
+			SavePoses();
+
+			if (WalkPose == null) WalkPose = PBO.LinkedPoses[PoseState.Walking];
 			
 			FH    = LB["LowerArmFront"].gameObject.GetOrAddComponent<NpcHand>();
 			BH    = LB["LowerArm"].gameObject.GetOrAddComponent<NpcHand>();
@@ -2652,14 +3389,20 @@ namespace PPnpc
 
 			if (Config.AutoStart) Active = true;
 
-			NpcHoverStats HS = Head.gameObject.GetOrAddComponent<NpcHoverStats>();
-
-			HS.ToggleStats(this);
+			ActivityMessage = new ActivityMessages(this);
+			
+			//HoverStats = Head.gameObject.GetOrAddComponent<NpcHoverStats>();
+			NpcHoverStats.Show(this);
+			//HoverStats.ToggleStats(this);
 
 		}
 
 		public void Death()
 		{
+			if (HoverStats) {
+				HoverStats.StopAllCoroutines();
+				HoverStats.HideStats();
+			}
 			Active = false;
 					
 			if (PBO) PBO.Braindead = true;
