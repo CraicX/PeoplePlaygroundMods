@@ -1,4 +1,4 @@
-﻿//                             ___           ___         ___     
+//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -24,10 +24,12 @@ namespace PPnpc
 		public Dictionary<string, float> Stats    = new Dictionary<string, float>();
 		public Dictionary<string, float> Feelings = new Dictionary<string, float>();
 		public Dictionary<string, float> Traits   = new Dictionary<string, float>();
+		public Dictionary<string, int> Perks      = new Dictionary<string, int>();
 
-		static string[] s_Stats    = {"Health", "Strength", "Speed", "Energy"};
-		static string[] s_Feelings = {"Mojo", "Bored", "Fear", "Angry", "Annoyed", "Hungry", "Bathroom", "Lonely", "Tired", "Chicken"};
+		static string[] s_Stats    = {"Health", "Strength", "Speed", "Energy", "Vision", "Brains", "Aiming"};
+		static string[] s_Feelings = {"Bored", "Fear", "Angry", "Annoyed", "Tired", "Chicken"};
 		static string[] s_Traits   = {"Shy", "Mean", "Friendly", "Playful", "Annoying", "Brave"};
+		static string[] s_Perks    = {"Heal"};
 		
 		public float Health
 		{
@@ -49,9 +51,17 @@ namespace PPnpc
 			foreach (string s in s_Stats)    Stats.Add(s, GetRand);
 			foreach (string s in s_Feelings) Feelings.Add(s, GetRand);
 			foreach (string s in s_Traits)   Traits.Add(s, GetRand);
+			foreach (string s in s_Perks)    Perks.Add(s, 0);
 
 			Feelings["Tired"]	= Feelings["Chicken"] = 0f;
-			Feelings["Mojo"]		= NPC.PBO.AverageHealth;
+			
+			Stats["Vision"]		= 35f;
+			Stats["Brains"]		= 5f;
+			Stats["Aiming"]	    = 50f;
+
+
+			
+
 		}
 
 		public void ClampAll()
@@ -85,15 +95,6 @@ namespace PPnpc
 					adjValue *= (Traits["Playful"]/100);
 					break;
 
-				case "Lonely":
-					Feelings["Bored"] += value * 0.5f;
-					adjValue *= -(Traits["Shy"]/100);
-					break;
-
-				case "Hungry":
-					if (value < 0) Feelings["Bathroom"] += (value * -0.5f);
-					break;
-
 				case "Fear":
 					adjValue *= -(Traits["Brave"]/100);
 					break;
@@ -108,75 +109,5 @@ namespace PPnpc
 
 			ClampAll();
 		}
-
-		public void ShowStats()
-		{
-			return;
-			////if (NPC.PBO.IsAlive()) { FunFacts.ShowFunFacts(NPC.NpcId); return; }
-			//if (NPC.PBO) Feelings["Mojo"] = NPC.PBO.AverageHealth;
-			//else Feelings["Mojo"] = 0;
-
-			//ModAPI.Notify("");
-			//string xtraInfo = "";
-			//if (NPC.PrimaryAction == NpcPrimaryActions.Scavenge) {
-			//	if (NPC.MyTargets.item) xtraInfo = xxx.NGlow(NPC.MyTargets.item.name);
-			//}
-			//else if (NPC.PrimaryAction == NpcPrimaryActions.Fight) {
-			//	if (NPC.MyTargets.enemy) xtraInfo = xxx.NGlow(NPC.MyTargets.enemy.name);
-			//}
-			
-			
-			//int bshot      = FunFacts.Get(NPC.NpcId, "BeenShot");
-			//int bstab      = FunFacts.Get(NPC.NpcId, "BeenStabbed");
-			//int ShotsFired = FunFacts.Get(NPC.NpcId, "ShotsFired");
-
-			//ModAPI.Notify("<size=150%><align=center><color=#581312>[<color=#841D1C>[ <color=#9BE9EA>" + NPC.Config.Name + "<color=#841D1C> ]<color=#581312>]</color></size>");
-			//ModAPI.Notify("<size=110%><align=center><b><color=#C72C2A>Threat </color> <color=#9594E3>--==<color=#9BE9EA>" + (Math.Round(NPC.ThreatLevel,1)) + "<color=#9594E3>==-- <color=#C72C2A> Level</b></color>");
-			
-			//int pnum        = 1;
-			//string myOutput = "";
-			//int v           = 1;
-			//foreach ( KeyValuePair<string, float> pair in Feelings )
-			//{
-			//	float val = Mathf.Round(pair.Value);
-
-			//	if (++pnum % 2 == 0) {
-			//		myOutput += "<voffset="+ (v * 1.5f) + "em><align=left><pos=10%><size=90%><color=#C72C2A>" 
-			//				+ pair.Key + ": <color=#2CC72A><b><pos=40%>" 
-			//				+ val + "</b></color><color=#C72C2A>";
-			//	}
-			//	else {
-			//		myOutput += "<pos=60%>" + pair.Key + ": <color=#2CC72A><b><pos=85%>" + val + "</b></color></align></voffset>";
-			//		v++;
-			//	}
-			//}
-			
-			
-			//int health      = Mathf.Clamp(Mathf.RoundToInt((NPC.MyBlood - 0.5f) * 100),1,50);
-			//if (!NPC.PBO.IsAlive()) health = 1;
-			//string color = "#CC0000";
-
-			//if (health > 20) color = "#CC0000";
-			//else if (health > 10) color = "#990000";
-			//else color = "#440000";
-
-		
-			//ModAPI.Notify("<align=center><voffset=1em><color=#636297><i>( <color=#9796B9>" + NPC.PrimaryAction.ToString() + " <color=#636297>)</i></voffset></align>");
-			//ModAPI.Notify("");
-			//ModAPI.Notify(myOutput);
-			//ModAPI.Notify("");
-			//ModAPI.Notify("<voffset=1.5em><align=center><color=" + color + ">" + (new string('/', Mathf.RoundToInt(health)) ) + "</align></voffset>");
-			//ModAPI.Notify("<voffset=2em><align=center><size=90%><color=#24B124># Times Shot: <b><color=#E7E789>" 
-			//	+ bshot + "</b><space=2em> <color=#24B124>Shot Others: <b><color=#E7E789>" + ShotsFired );
-
-		}
-
-
-
-
-
-
-
 	}
-
 }

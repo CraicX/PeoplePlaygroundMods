@@ -1149,8 +1149,8 @@ namespace Mulligan
 			limb.SkinMaterialHandler.AcidProgress   = 0.0f;
 			limb.SkinMaterialHandler.RottenProgress = 0.0f;
 
-			for (int index = 0; index < limb.SkinMaterialHandler.bulletHolePoints.Length; ++index)
-				limb.SkinMaterialHandler.bulletHolePoints[index].z  = 100f;
+			//for (int index = 0; index < limb.SkinMaterialHandler.bulletHolePoints.Length; ++index)
+			//	limb.SkinMaterialHandler.bulletHolePoints[index].z  = 100f;
 			for (int index = 0; index < limb.SkinMaterialHandler.damagePoints.Length; ++index)
 				limb.SkinMaterialHandler.damagePoints[index].z      = 100f;
 

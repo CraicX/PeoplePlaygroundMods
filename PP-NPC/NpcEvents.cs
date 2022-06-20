@@ -1,4 +1,4 @@
-﻿//                             ___           ___         ___     
+//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -27,9 +27,9 @@ namespace PPnpc
         public static Dictionary<EventIds, float> EventThrottle = new Dictionary<EventIds, float>();
 
         public static event System.EventHandler<UserSpawnEventArgs> OnItemSpawned;
+        public static bool IsConfigured = false;
 
 
-        private static bool IsConfigured = false;
         public static void Subscribe( NpcBehaviour npc )
         {
             if ( !NPCs.ContainsKey( npc.NpcId ) )
@@ -69,8 +69,17 @@ namespace PPnpc
                     if ( life.transform.root.TryGetComponent<NpcBehaviour>( out NpcBehaviour npc ) )
                     {
                         if (!npc || !npc.PBO) return;
-                        
-                        npc.PrimaryAction = NpcPrimaryActions.Dead;
+                        if ( npc.Memory.LastContact)
+                        {
+                            if (npc.Memory.LastContact.EnhancementTroll)
+                            {
+                                if ( Mathf.Abs(npc.Memory.LastContact.Head.position.x - npc.Head.position.x ) < 1.5f )
+                                {
+                                    npc.Memory.LastContact.SayRandom("death");
+                                }
+                            }
+                        }
+                        npc.Action.CurrentAction = "Dead";
 
                         if (NpcGlobal.AllNPC.Contains(npc)) NpcGlobal.AllNPC.Remove( npc );
                         npc.IsDead = true;
@@ -190,24 +199,26 @@ namespace PPnpc
 
         public static void BroadcastRadius( NpcBehaviour sender, float radius, EventIds eventId, float importance)
         {
+            return;
+            //if (!sender) return;
+            //if ()
+            //Vector3 pos = sender.transform.position;
+            //NpcBehaviour myNpc;
 
-            Vector3 pos = sender.transform.position;
-            NpcBehaviour myNpc;
+            //foreach ( KeyValuePair<int, Transform> pair in NPCT )
+            //{
+            //    if (!NPCs[pair.Key] || !NPCs[pair.Key].PBO || !pair.Value) continue;
 
-            foreach ( KeyValuePair<int, Transform> pair in NPCT )
-            {
-                if (!NPCs[pair.Key] || !NPCs[pair.Key].PBO || !pair.Value) continue;
-
-                float dSqr = (pos - pair.Value.position).sqrMagnitude;
+            //    float dSqr = (pos - pair.Value.position).sqrMagnitude;
        
-                if ( dSqr < radius )
-                {
-                    myNpc = NPCs[pair.Key];
-                    if (myNpc == sender) continue;
+            //    if ( dSqr < radius )
+            //    {
+            //        myNpc = NPCs[pair.Key];
+            //        if (myNpc == sender) continue;
 
-                    Message(sender, myNpc, eventId, importance);
-                }
-            }
+            //        Message(sender, myNpc, eventId, importance);
+            //    }
+            //}
         }
 
         public static void BroadcastEvent( EventInfo eventInfo, Vector3 point, float radius )
@@ -268,18 +279,15 @@ namespace PPnpc
                 case EventIds.Birth:
                     if ( npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Lonely",-1 * importance);
                         npc.Mojo.Feel("Annoyed",-1 * importance);
                     }
                     else if ( npc.Config.HostileTypes != null && npc.Config.HostileTypes.Contains( sender.Config.NpcType ) )
                     {
-                        npc.Mojo.Feel("Lonely",1 * importance);
                         npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
                     }
                     else if ( npc.Config.NpcType == sender.Config.NpcType )
                     {
-                        npc.Mojo.Feel("Lonely",-1);
                         npc.Mojo.Feel("Annoyed",-1);
                     }
                     break;
@@ -287,7 +295,6 @@ namespace PPnpc
                 case EventIds.Death:
                     if (npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Lonely",1 * importance);
                         npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
                         npc.Mojo.Feel("Fear",1 * importance);
@@ -298,7 +305,6 @@ namespace PPnpc
                     }
                     else if ( npc.Config.NpcType == sender.Config.NpcType )
                     {
-                        npc.Mojo.Feel("Lonely",1);
                         npc.Mojo.Feel("Annoyed",1);
                         npc.Mojo.Feel("Fear",2 * importance);
                     }
@@ -311,18 +317,15 @@ namespace PPnpc
                 case EventIds.Killed:
                     if ( npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Lonely",-1 * importance);
                         npc.Mojo.Feel("Annoyed",-1 * importance);
                     }
                     else if ( npc.Config.HostileTypes != null && npc.Config.HostileTypes.Contains( sender.Config.NpcType ) )
                     {
-                        npc.Mojo.Feel("Lonely",1 * importance);
                         npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
                     }
                     else if ( npc.Config.NpcType == sender.Config.NpcType )
                     {
-                        npc.Mojo.Feel("Lonely",-1);
                         npc.Mojo.Feel("Annoyed",-1);
                     }
                     else

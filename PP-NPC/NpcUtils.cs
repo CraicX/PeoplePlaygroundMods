@@ -1,4 +1,4 @@
-﻿//                             ___           ___         ___     
+//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -14,6 +14,7 @@
 using System.Collections.Generic;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 using System.Linq;
 using System;
 
@@ -33,6 +34,39 @@ namespace PPnpc
 			return prop;
 
 		}
+
+		public static void CheckRebirthers()
+		{
+			NpcRebirther[] Rebirthers = UnityEngine.Object.FindObjectsOfType<NpcRebirther>();
+
+			//Shuffle(Rebirthers);
+
+			NpcGlobal.Rebirthers = new bool[]{false,false,false,false,false};
+
+			foreach ( NpcRebirther rebirther in Rebirthers)
+			{
+				if (rebirther.RebirtherActive) {
+					NpcGlobal.Rebirthers[rebirther.TeamId] = true;
+
+				}
+			}
+		}
+
+
+		public static void Shuffle<T> (T[] array)
+		{
+			System.Random rng = new System.Random();
+
+			int n = array.Length;
+			while (n > 1) 
+			{
+				int k = rng.Next(n--);
+				T temp = array[n];
+				array[n] = array[k];
+				array[k] = temp;
+			}
+		}
+
 
 		public static Quaternion LookAt2D(Vector2 forward) => Quaternion.Euler(0, 0, Mathf.Atan2(forward.y, forward.x) * Mathf.Rad2Deg);
 
@@ -61,7 +95,7 @@ namespace PPnpc
 				for (int i = Components.Length; --i >= 0;)
 				{
 					string compo = Components[i].GetType().ToString().ToUpper();
-					
+
 					if (AutoFire.Contains(compo))
 					{
 						basics.CanShoot    = true;
@@ -79,7 +113,7 @@ namespace PPnpc
 			CanShoot[] ShootComponents = weapon.GetComponents<CanShoot>();
 
 			if ( ShootComponents.Length > 0 ) basics.CanShoot    = true;
-			
+
 			if (weapon.TryGetComponent(out FirearmBehaviour FBH))
 			{
 				basics.CanShoot             = true;
@@ -110,40 +144,36 @@ namespace PPnpc
 		public static int rr(int nMin, int nMax) => UnityEngine.Random.Range(nMin, nMax);
 
 		public static ContactFilter2D filter = new ContactFilter2D();
-		
+
 		public static List<Collider2D> ColliderList = new List<Collider2D>();
 
-		public static void IgnoreCollisions( Transform t1, Transform t2 )
+		public static void FixCollisions( Transform t1 )
 		{
-			if (t1 == null || t2 == null || t1 == t2) return;
+			Collider2D[] colSet2  = GameObject.FindObjectsOfType<Collider2D>();
+			Collider2D[] colSet1  = t1.GetComponentsInChildren<Collider2D>();
 
-			Collider2D[] colSet3;
-			Collider2D[] colSet4;
+			Transform selfRoot = t1.root;
 
-			colSet3 = t1.GetComponentsInChildren<Collider2D>();
-			colSet4 = t2.GetComponentsInChildren<Collider2D>();
-
-			foreach (Collider2D col1 in colSet3)
+			foreach (Collider2D col1 in colSet1)
 			{
 				if (col1 == null) continue;
 				if (!(bool)(UnityEngine.Object) col1) continue;
 
-				foreach (Collider2D col2 in colSet4)
+				foreach (Collider2D col2 in colSet2)
 				{
-					if (col2 == null) continue;
-					if ((bool)(UnityEngine.Object) col2) 
-						IgnoreCollisionStackController.IgnoreCollisionSubstituteMethod( col1, col2 );
+					if (col2 == null || col1 == col2 || col1.transform.root == col2.transform.root) continue;
+					if ((bool)(UnityEngine.Object) col2) { 
+						//IgnoreCollisionStackController.RequestDontIgnoreCollision( col1, col2 );
+						Physics2D.IgnoreCollision(col1,col2,false);
+					}
 				}
 			}
 		}
 
 
-		public static int AimingHits( Transform gun, Transform target, ref RaycastHit2D[] hitResults, float dist = 10f )
-		{
-			return Physics2D.Raycast((Vector2) gun.transform.position, (Vector2) gun.transform.TransformVector(Vector3.right), filter, hitResults, 10f);
-		}
 
-		public static bool AimingTowards( Transform gun, Transform target, float dist = 10f )
+
+		public static bool AimingTowards( Transform gun, Transform target)
 		{
 			float facing = (gun.transform.localScale.x < 0.0f) ? 1f : -1f;
 			int numRes = Physics2D.Raycast((Vector2) gun.transform.position, (Vector2) gun.transform.TransformVector(Vector3.right), filter, NpcBehaviour.HitResults, 10f);
@@ -179,7 +209,7 @@ namespace PPnpc
 			if (!npc || !npc.PBO ) return 0f;
 
 			float threatLevel = npc.Config.BaseThreatLevel;
-			
+
 			threatLevel += npc.PBO.AverageHealth - 14f;
 
 			threatLevel += 5f - npc.LB["UpperBody"].BaseStrength;
@@ -194,7 +224,7 @@ namespace PPnpc
 
 			threatLevel -= npc.Mojo.Feelings["Chicken"];
 
-			//if (!npc.IsUpright) threatLevel *= 0.5f;
+			if (!npc.IsUpright) threatLevel *= 0.9f;
 
 			return threatLevel;
 		}
@@ -212,8 +242,34 @@ namespace PPnpc
 
 			return true;
 		}
-		
-		
+
+		public static bool CanTarget( NpcTool gun, Transform target )
+		{
+			LayerMask layers = LayerMask.GetMask("Objects", "Background");
+
+			Vector2 direction, spacer;
+
+			if (gun.Facing > 0) {
+				direction = (target.position - gun.P.transform.position) * gun.Facing;
+				spacer    = new Vector2(-1.5f,0f);
+			}
+			else {
+				direction = (target.position - gun.P.transform.position) * -gun.Facing;
+				spacer    = new Vector2(1.5f,0f);
+			}
+
+			RaycastHit2D ray = Physics2D.Raycast((Vector2)gun.transform.position + spacer, direction.normalized, 50f, layers);
+			if (!ray) return false;
+
+			if (ray.collider.transform.root == target.root) return true;
+
+			// Debug.Log(gun.P.name + ":" + ray.collider.transform.root.name + " -> " + ray.collider.gameObject.name);
+
+			return false; 
+
+		}
+
+
 
 
 		public static bool NPCOnFire( NpcBehaviour npc )
@@ -265,7 +321,7 @@ namespace PPnpc
 			return closestItem;
 		}
 
-		
+
 
 		public static NpcBehaviour ClosestNpc( NpcBehaviour ogNpc, NpcBehaviour[] NpcList, bool mustBeFacing = false )
 		{
@@ -375,7 +431,6 @@ namespace PPnpc
 							Physics2D.IgnoreCollision(col1,col2,!enable);
 					}
 				}
-
 			}
 
 			Collider2D[] colSet3;
@@ -437,8 +492,8 @@ namespace PPnpc
 			} else
 			{
 				if (!t1||!t2) return false;
-				colSet1 = t1.GetComponentsInChildren<Collider2D>();
-				colSet2 = t2.GetComponentsInChildren<Collider2D>();
+				colSet1 = t1.GetComponents<Collider2D>();
+				colSet2 = t2.GetComponents<Collider2D>();
 			}
 
 			ContactFilter2D filter = new ContactFilter2D();
@@ -496,7 +551,7 @@ namespace PPnpc
 
 
 
-		
+
 
 		public static Vector2 FindFloor( Vector2 startPos )
 		{
@@ -515,7 +570,7 @@ namespace PPnpc
 			foreach (LimbBehaviour limb in LBs) { action(limb); }
 		}
 
-	   
+
 
 		public static void LimbGhost(LimbBehaviour limb, bool option) { limb.gameObject.layer = LayerMask.NameToLayer(option ? "Debris" : "Objects"); }
 		public static void LimbKill(LimbBehaviour limb) { limb.Health = 0; limb.IsLethalToBreak = true; limb.Broken = true; }
@@ -551,7 +606,7 @@ namespace PPnpc
 		}
 
 
-		
+
 
 		public static LineRenderer InitLine(GameObject lineOwner)
 		{
@@ -578,7 +633,7 @@ namespace PPnpc
 			return lr;
 		}
 
-		
+
 
 
 	}
@@ -638,13 +693,13 @@ namespace PPnpc
 			ModAPI.Notify("");
 			ModAPI.Notify("<size=150%><align=center><color=#581312>[<color=#841D1C>[ <color=#9BE9EA>" + FFList[npcId].Name + "<color=#841D1C> ]<color=#581312>]</color></size>");
 			ModAPI.Notify("<size=110%><align=center><b><color=#5E0817>KILLED</b></color>");
-			
+
 			string[] keys = new string[FFList[npcId].Facts.Count]; 
-			
+
 			FFList[npcId].Facts.Keys.CopyTo(keys,0);
-			
+
 			int[]  vals = new int[FFList[npcId].Facts.Count];  
-			
+
 			FFList[npcId].Facts.Values.CopyTo(vals,0);
 			int pnum = 0;
 
@@ -661,15 +716,15 @@ namespace PPnpc
 
 			output += "</voffset>";
 
-			
+
 			ModAPI.Notify("");
 			ModAPI.Notify(output);
 
-			
+
 			ModAPI.Notify("");ModAPI.Notify("");
 
 
-			
+
 		}
 
 		public static string MojoStatsDead( string name1, int val1, string name2, int val2 )
@@ -678,6 +733,9 @@ namespace PPnpc
 
 			return output;
 		}
+
+
+		
 
 
 	}
@@ -709,6 +767,11 @@ namespace PPnpc
 
 		IEnumerator IReaper()
 		{
+			if ( gameObject.TryGetComponent<NpcBehaviour>( out NpcBehaviour npx ) )
+			{
+				GameObject.DestroyImmediate(npx);
+			}
+
 			if (!PBO) {
 				if ( transform.root.TryGetComponent<PersonBehaviour>( out PersonBehaviour _pbo ) )
 				{
@@ -716,17 +779,84 @@ namespace PPnpc
 				} else yield break;
 
 			}
+			PBO.SetBloodColour(0, 0, 0);
 			float timeExplode = Time.time + xxx.rr(SecondsBeforeCrush.Min, SecondsBeforeCrush.Max);
 			while ( Time.time < timeExplode )
 			{
-				foreach( LimbBehaviour limb in PBO.Limbs ) limb.SkinMaterialHandler.RottenProgress *= DecomposeRate;
+				foreach( LimbBehaviour limb in PBO.Limbs ) {
+					limb.SkinMaterialHandler.RottenProgress *= DecomposeRate;
+					
+
+					limb.CirculationBehaviour.ForceSetAllLiquid(0f);
+					limb.CirculationBehaviour.Drain(float.MaxValue);
+					limb.IsZombie = true;
+					
+					//limb.CirculationBehaviour.AddLiquid(limb.GetOriginalBloodType(), 1f);
+					//limb.CirculationBehaviour.AddLiquid(Liquid.GetLiquid("LIFE SERUM"), 0.1f);
+				}
 				yield return new WaitForSeconds(1);
 			}
 			
-			foreach( LimbBehaviour limb in PBO.Limbs ) limb.Crush();
 			
-			GameObject.Destroy(this);
+
+
+			foreach( LimbBehaviour limb in PBO.Limbs ) {
+					
+				limb.CirculationBehaviour.Disintegrate();
+
+				for ( int i = 0; i < limb.ConnectedLimbs.Count; i++ )
+				{
+					LimbBehaviour limbBehaviour = limb.ConnectedLimbs[i];
+					if ( limb.NodeBehaviour.IsConnectedTo( limbBehaviour.NodeBehaviour ) && limbBehaviour.HasJoint && limbBehaviour.Joint.connectedBody == limb.PhysicalBehaviour.rigidbody )
+					{
+						limbBehaviour.Joint.breakForce = 0f;
+					}
+				}
+					limb.CirculationBehaviour.StopAllCoroutines();
+
+				limb.CirculationBehaviour.ForceSetAllLiquid(0f);
+					limb.CirculationBehaviour.Drain(float.MaxValue);
+
+				limb.NodeBehaviour.DisconnectFromEverything();
+				if ( limb.HasJoint )
+				{
+					limb.Joint.breakForce = 0f;
+					limb.Joint.breakTorque = 0f;
+				}	limb.CirculationBehaviour.Disintegrate();
+					limb.enabled = false;
+
+			}
+
+			timeExplode = Time.time + xxx.rr(1,3);
+			while ( Time.time < timeExplode )
+			{
+				foreach( LimbBehaviour limb in PBO.Limbs ) {
+					limb.transform.localScale *= 0.9f;
+				}
+
+				yield return new WaitForSeconds(0.1f);
+
+			}
+				
+			foreach( LimbBehaviour limb in PBO.Limbs ) {
+				limb.StopAllCoroutines();
+				limb.transform.localScale = Vector2.zero;
+				limb.enabled = false;
+				FancyBloodSplatController fbs = limb.gameObject.GetComponentInChildren<FancyBloodSplatController>();
+				if (fbs)
+				{
+					fbs.Size = 0.001f;
+					fbs.CollisionLayers = -1;
+				}
+				limb.transform.position = limb.transform.position = new Vector2(-100,-100);
+				limb.transform.gameObject.SetLayer(2);
+				yield return new WaitForFixedUpdate();
+				limb.Crush();
+			}
+
+
+			GameObject.Destroy(PBO);
 		}
-			
+
 	}
 }

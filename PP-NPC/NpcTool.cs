@@ -1,4 +1,4 @@
-﻿//                             ___           ___         ___     
+//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -38,7 +38,7 @@ namespace PPnpc
 		public Vector3 HoldingPosition;
 		public Vector3 AltHoldingPosition;
 		public float lastFire;
-		
+
 		public Vector3 ThrowTargetPos;
 		public Vector3 ThrowStartPos;
 		public float ThrowSpeed;
@@ -48,7 +48,13 @@ namespace PPnpc
 		public Vector3 ThrowNextPos;
 		public Vector2 ThrowVelocity;
 		public List<Transform> NoGhost = new List<Transform>();
+		public Coroutine validate;
+		private int nogrip = 0;
 
+		void OnGripped( GripBehaviour grip )
+        {
+			//ModAPI.Notify(P.name + " -> Picked up by: " + grip.name);
+        }
 
 		void FixedUpdate()
 		{
@@ -62,13 +68,13 @@ namespace PPnpc
 		}
 
 		void CheckLaunch()
-        {
+		{
 			if (P.beingHeldByGripper) return;
 
 			ThrownTool = false;
 
 			P.rigidbody.velocity = ThrowVelocity;
-        }
+		}
 
 		void CalculateTrajectory()
 		{
@@ -79,32 +85,43 @@ namespace PPnpc
 			float baseY  = Mathf.Lerp(ThrowStartPos.y, ThrowTargetPos.y, (nextX - x0) / dist);
 			float arc    = ThrowArc * (nextX - x0) * (nextX - x1) / (-0.25f * dist * dist);
 			ThrowNextPos = new Vector3(nextX, baseY + arc, P.transform.position.z);
-		
+
 			// Rotate to face the next position, and then move there
 			P.transform.rotation = xxx.LookAt2D(ThrowNextPos - P.transform.position);
 			P.transform.position = ThrowNextPos;
-		
+
 			// Do something when we reach the target
 			if (ThrowNextPos == ThrowTargetPos) ThrownTool = false;
 		}
 
 		public void Dropped()
-        {
+		{
 			Hand = null;
-        }
+			PersonBehaviour[] People = UnityEngine.Object.FindObjectsOfType<PersonBehaviour>();
+
+			if ( P && People.Length > 0)
+			{
+				foreach ( PersonBehaviour peep in People )
+				{
+					if (!peep) continue;
+					xxx.ToggleCollisions(P.transform, peep.Limbs[0].transform, true );
+				}
+			}
+
+		}
 
 		public void SetTool( PhysicalBehaviour item, NpcHand hand )
 		{
 			if (Hand != null && Hand != hand && Hand.NPC != hand.NPC)
-            {
+			{
 				if (hand.Tool == this) hand.Drop();
-            }
+			}
 
 			G          = item.gameObject;
 			P          = item;
 			R          = item.rigidbody;
 			T          = G.transform;
-			
+
 			props = G.GetOrAddComponent<Props>();
 
 			props.Init(item);
@@ -113,14 +130,14 @@ namespace PPnpc
 			this.Hand  = hand;
 
 			Array.Sort( P.HoldingPositions,(a,b) => a.x.CompareTo(b.x) );
-			
+
 			HoldingPosition = P.HoldingPositions[0];
 			Array.Reverse(P.HoldingPositions);
 			AltHoldingPosition = P.HoldingPositions[0];
 
-			
-
-			StartCoroutine(IValidate());
+			//StopAllCoroutines();
+			if (validate != null) StopCoroutine(validate);
+			validate = StartCoroutine(IValidate());
 		}
 
 		public bool IsFlipped => (bool)(T.localScale.x < 0.0f);
@@ -140,7 +157,7 @@ namespace PPnpc
 		}
 
 		public void ThrowAt( Vector3 target, float speed, float arc )
-        {
+		{
 			Hand.Drop();
 			ThrowTargetPos = target;
 			ThrowSpeed     = speed;
@@ -170,19 +187,22 @@ namespace PPnpc
 			ThrownTool = true;
 
 
-        }
+		}
 
-		
+
 		private void OnCollisionEnter2D(Collision2D coll=null)
 		{
 			bool fixNoCollide = false;
+
+			if (!Hand || !Hand.NPC || !Hand.NPC.PBO) return;
+
 			if (coll.gameObject.layer == 11) {
 				if ( coll.gameObject.name.Contains( "wall" )) xxx.ToggleCollisions(T,coll.transform,false,true);
 				return;		
 			}
 			if (NpcGlobal.ToyNames.Contains(coll.gameObject.name)) {
 				xxx.ToggleCollisions(T, coll.transform,false, true);
-            }
+			}
 			if ( coll.gameObject.TryGetComponent<PhysicalBehaviour>( out PhysicalBehaviour phys ) )
 			{
 				if (phys.beingHeldByGripper)
@@ -190,7 +210,7 @@ namespace PPnpc
 					fixNoCollide = true;
 				}
 			}
-			
+
 			//  Disable collisions between this held item and whoever we bumped into (if we're not fighting)
 			//
 			NpcBehaviour otherNpc = coll.gameObject.GetComponentInParent<NpcBehaviour>();
@@ -200,13 +220,13 @@ namespace PPnpc
 			} else
 			{
 				PersonBehaviour person = coll.gameObject.GetComponentInParent<PersonBehaviour>();
-				if ( person && !NpcBehaviour.DefenseActions.Contains(Hand.NPC.PrimaryAction))
+				if ( person && !NpcBehaviour.DefenseActions.Contains(Hand.NPC.Action.CurrentAction))
 					fixNoCollide = true;
 			}
 
 			 if (fixNoCollide) {
 				if (NoGhost.Contains(coll.transform) || NoGhost.Contains(coll.transform.root)) return;
-				
+
 				xxx.ToggleCollisions(T,coll.transform,false, true);
 
 			}
@@ -222,10 +242,13 @@ namespace PPnpc
 				if (!Hand 
 					|| !Hand.NPC 
 					|| !Hand.NPC.PBO 
-					|| !Hand.NPC.PBO.IsAlive() )
+					|| !Hand.NPC.PBO.IsAlive()
+					|| Hand.Tool != this)
 				{
 					if ( P )
 					{
+						if (NpcMain.DEBUG_LOGGING) Debug.Log(name + "[action]: IValidate:nohand()");
+						xxx.FixCollisions(T);
 						P.MakeWeightful();
 						xxx.ToggleWallCollisions(T, true);
 						if (P.gameObject.TryGetComponent<LayerSerialisationBehaviour>(out LayerSerialisationBehaviour component))
@@ -235,7 +258,15 @@ namespace PPnpc
 						}
 						UnityEngine.Object.Destroy(this);
 					}
-				}
+				} else if (P && !P.beingHeldByGripper)
+				{
+
+					if (++nogrip > 5) { 
+						if (NpcMain.DEBUG_LOGGING) Debug.Log(name + "[action]: IValidate:beingHeldByGripper()");
+						Hand = null;
+						xxx.FixCollisions(T);
+					}
+				} else nogrip = 0;
 
 				yield return new WaitForSeconds(1);
 			}
@@ -255,8 +286,15 @@ namespace PPnpc
 
 		public void Activate(bool continuous=false)
 		{
+			if ( !P )
+			{
+				Hand.Drop();
+				GameObject.Destroy(gameObject);
+				GameObject.Destroy(this);
+				return;
+			}
 			if (!continuous && Time.time < lastFire ) return;
-			if (continuous && Time.time < BurstCooldown) return;
+			if ( continuous && Time.time < BurstCooldown) return;
 
 			if (!BurstActivated)
 			{
@@ -271,8 +309,8 @@ namespace PPnpc
 			}
 
 			lastFire = Time.time + xxx.rr(0.0f, 1.0f);
-			
-			
+
+
 			P.SendMessage(continuous ? "UseContinuous" : "Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
 
 			Hand.NPC.Mojo.Feelings["Angry"]   *= 0.1f;
@@ -308,7 +346,7 @@ namespace PPnpc
 		//
 		// ─── GET DETAILS ────────────────────────────────────────────────────────────────
 		//
-		
+
 		void OnDestroy()
 		{
 			PhysicalBehaviour pb = gameObject.GetComponentInParent<PhysicalBehaviour>();
@@ -327,7 +365,7 @@ namespace PPnpc
 		{
 
 		}
-	
+
 
 	}
 }

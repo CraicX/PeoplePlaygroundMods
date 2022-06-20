@@ -1,4 +1,4 @@
-﻿//                             ___           ___         ___     
+//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -15,6 +15,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,29 +27,30 @@ namespace PPnpc
 	{
 		private NpcBehaviour _npc = null;
 		public TextMeshProUGUI Text;
-		public Canvas Canvas;
+		public Canvas Canvas = null;
 		public TextMeshProUGUI HoverStats;
-		public GameObject AttachedObj = null;
-		public SpriteRenderer SR = null;
 		public Vector3 position;
-		public Vector3 Offset = new Vector3(0, 2.1f);
+		public GameObject AttachedObj   = null;
+		public SpriteRenderer SR        = null;
+		public Vector3 Offset           = new Vector3(0, 2.5f);
 		public RectTransform rectImage2 = null;
-		public RectTransform rectImage = null;
-
-		private bool ZoomingIn         = true;
-		private Vector2 RSize          = new Vector2(2.5f, 3.5f);
-		public static StringBuilder sb = new StringBuilder();
-		public bool StartFade          = false;
-		private bool okInit = false;
+		public RectTransform rectImage  = null;
+		private bool ZoomingIn          = true;
+		private Vector2 RSize           = new Vector2(2.5f, 3.5f);
+		public static StringBuilder sb  = new StringBuilder();
+		public bool StartFade           = false;
+		private bool okInit			    = false;
+		private int NameFontSize		= 150;
 
 
 		public NpcBehaviour NPC { 
 			get { return _npc; }
 			set { 
-				_npc = value; 
-				AttachedObj = value.Head.gameObject;
-				okInit = true;
-
+				if (!value || !value.PBO ) { return; }
+				_npc         = value; 
+				AttachedObj  = value.PBO.Limbs[0].gameObject;
+				okInit       = true;
+				NameFontSize = 155 - (_npc.PBO.name.Length * 2);
 			}
 		}
 
@@ -56,39 +58,19 @@ namespace PPnpc
 
 		private bool _show = false;
 
-		
+
 
 		void Start()
 		{
-			Offset = new Vector3(0, 2.1f);
+			Offset = new Vector3(0, 2.5f);
 		}
 
 		void FixedUpdate()
 		{
-			//if (Time.frameCount % 100 == 0 && (!AttachedObj || !_npc || !_npc.PBO ) )
-   //         {
-			//	//if (HSObj) UnityEngine.Object.Destroy(HSObj);
-			//	UnityEngine.Object.Destroy(this);
-			//	return;
-   //         }
-
-			
-			//if ( ZoomingIn && rectImage2 )
-			//{
-
-
-			//	rectImage2.sizeDelta = Vector2.Lerp(rectImage2.sizeDelta, RSize,Time.fixedDeltaTime * 5f);
-
-			//	if ((rectImage2.sizeDelta - RSize).magnitude < 0.1f) {
-			//		ZoomingIn = false;
-			//	}
-			//} else
-            //{
-				if ( okInit && _show && AttachedObj )
-				{
-					transform.position = Vector3.Slerp(transform.position,AttachedObj.transform.position + Offset,  Time.fixedDeltaTime);
-				}
-            //}
+			if ( okInit && _show && AttachedObj )
+			{
+				transform.position = Vector3.Slerp(transform.position,AttachedObj.transform.position + Offset,  Time.fixedDeltaTime);
+			}
 		}
 
 		public void ToggleStats( NpcBehaviour _npc = null )
@@ -116,10 +98,11 @@ namespace PPnpc
 		public void ShowText()
 		{
 
+			if (!_npc || _npc.Mojo == null) return;
 			sb.Clear();
 
-			sb.AppendFormat(@"<font-weight=900><br><size=150%><align=center><color=#9BE9EA>{0}</color></size><line-height=165%>", _npc.Config.Name);
-			sb.AppendFormat(@"<br><size=120%><align=center><b><color=#C72C2A>Threat </color> <color=#9594E3>--==<color=#9BE9EA> {0} <color=#9594E3>==-- <color=#C72C2A> Level</b></color></align></size><br><line-height=100%>", (Math.Round(NPC.ThreatLevel,1)));
+			sb.AppendFormat(@"<font-weight=900><br><size={0}%><align=center><color=#9BE9EA>{1}</color></size><line-height=165%>", NameFontSize, _npc.Config.Name);
+			sb.AppendFormat(@"<br><size=120%><align=center><b><color=#C72C2A>Threat </color> <color=#9594E3>--==<color=#9BE9EA> {0} <color=#9594E3>==-- <color=#C72C2A> Level</b></color></align></size><br><line-height=90%>", (Math.Round(NPC.ThreatLevel,1)));
 
 			int pnum = 1;
 
@@ -151,13 +134,22 @@ namespace PPnpc
 				}
 			}
 
-			string ActionString = _npc.PrimaryAction.ToString();
-
-			if ("Wander Thinking Wait".Contains(ActionString)) ActionString = "";
+			string ActionString = (NpcBehaviour.DontNotify.Contains(_npc.Action.CurrentAction)) ? "" : _npc.Action.CurrentAction;
 
 			if (_npc.ActivityMessage.time > Time.time) ActionString = _npc.ActivityMessage.msg;
 
-			if (ActionString != "") sb.AppendFormat(@"<br><br><size=120%><align=center><color=#636297><i>( <color=#A2C4CB>{0}<color=#636297> )</i></align>", ActionString);
+			sb.AppendFormat(@"<size=25%><br></size>");
+
+			if (ActionString != "") {
+
+				int ActionFontSize = 130 - (ActionString.Length);
+
+				sb.AppendFormat(@"<br><size={0}%><align=center><color=#636297><i>( <color=#A2C4CB>{1}<color=#636297> )</i></align>", ActionFontSize, ActionString);
+
+
+
+			}
+			//sb.AppendFormat(@"<sprite name='z'>");
 
 			HoverStats.text = sb.ToString();
 
@@ -191,7 +183,7 @@ namespace PPnpc
 
 			rectImage = gameObject.GetComponent<RectTransform>();
 			rectImage.sizeDelta     = new Vector2(2.5f,3.5f);
-			
+
 			Canvas = gameObject.GetComponent<Canvas>() as Canvas;
 
 			GameObject HSimg = new GameObject("HoverBGImg") as GameObject;
@@ -206,7 +198,7 @@ namespace PPnpc
 
 			HoverStats = gameObject.GetComponent<TextMeshProUGUI>();
 			HoverStats.fontSize              = 0.12f;
-			
+
 			HoverStats.text                  = "";
 			HoverStats.outlineWidth          = 0.0f;
 			HoverStats.fontStyle             = FontStyles.UpperCase | FontStyles.Bold;
@@ -219,77 +211,114 @@ namespace PPnpc
 
 			StartCoroutine(IValidate());
 
+			ReShowIcons();
+
+
 
 		}
 
+		public void AddIcon(IconTypes iType, int IconPosition)
+		{
+
+			StatsIcon icon = new StatsIcon(iType, IconPosition, Canvas);
+
+			NPC.Icons.Add(icon);
+
+			StatsIcon.PositionIcons( NPC.Icons );
+
+		}
+
+		public void ReShowIcons()
+		{
+			NPC.Icons.Clear();
+
+			if (NPC.EnhancementMemory) AddIcon(IconTypes.Upgrade, 0);
+			if (NPC.EnhancementFirearms) AddIcon(IconTypes.Upgrade, 1);
+			if (NPC.EnhancementKarate) AddIcon(IconTypes.Upgrade, 2);
+			if (NPC.EnhancementMelee) AddIcon(IconTypes.Upgrade, 3);
+			if (NPC.EnhancementTroll) AddIcon(IconTypes.Upgrade, 4);
+			if (NPC.EnhancementHero) AddIcon(IconTypes.Upgrade, 5);
+			
+		}
+
 		public IEnumerator IValidate()
-        {
+		{
 			for (; ; )
-            {
+			{
 				if (!_npc || !_npc.PBO)
-                {
+				{
 					HideStats();
 					yield return new WaitForFixedUpdate();
 					Destroy(this);
-                }
-				
+				}
+
 				//ShowText();
 
 				yield return new WaitForSeconds(5);
-            }
-        }
+			}
+		}
 
 		public static Dictionary<int, NpcHoverStats> AllHoverStats = new Dictionary<int, NpcHoverStats>();
-		
+
 		public static bool HasBeenInit = false;
 
 		public static Coroutine vRout;
 
 		public static void Show( NpcBehaviour npc )
-        {
+		{
 			if (AllHoverStats.TryGetValue(npc.NpcId,out NpcHoverStats hoverStats))
-            {
+			{
 				hoverStats.DisplayStats();
-            }
+				hoverStats.ReShowIcons();
+			}
 			else
-            {
+			{
 				NpcHoverStats npcHoverStats = CreateHoverStats(npc);
 				AllHoverStats[npc.NpcId]    = npcHoverStats;
 				npcHoverStats.DisplayStats();
-            }
-        }
+			}
+		}
 
 		public static void Hide( NpcBehaviour npc )
-        {
+		{
 			if (AllHoverStats.TryGetValue(npc.NpcId,out NpcHoverStats hoverStats)) Hide(hoverStats);
-        }
+			
+		}
 
 		public static void Hide( int NpcId )
-        {
+		{
 			if (AllHoverStats.TryGetValue(NpcId,out NpcHoverStats hoverStats)) Hide(hoverStats);
-        }
+		}
 
 		public static void Hide( NpcHoverStats hs )
-        {
+		{
 			foreach ( KeyValuePair<int, NpcHoverStats> pair in AllHoverStats )
-            {
+			{
 				if (pair.Value == hs)
-                {
+				{
 					if (hs) hs.HideStats();
 					return;
-                }
-            }
-        }
+				}
+			}
+		}
 
 		public static void Toggle( NpcBehaviour npc )
-        {
+		{
 
-			if (AllHoverStats.TryGetValue(npc.NpcId,out NpcHoverStats hs)) Hide(hs);
-			else Show(npc);
-        }
+			if (AllHoverStats.TryGetValue(npc.NpcId,out NpcHoverStats hs)) {
+				NpcBehaviour.GlobalShowStats = false;
+				Hide(hs);
+				npc.ShowStats = false;
+			}
+			else {
+				NpcBehaviour.GlobalShowStats = true;
+				Show(npc);
+				npc.ShowStats = true;
+			}
+		}
 
 		public static NpcHoverStats CreateHoverStats( NpcBehaviour myNpc )
-        {
+		{
 			GameObject MyGo	= new GameObject("HoverStats", 
 				 typeof(SpriteRenderer), 
 				 typeof(NpcHoverStats), 
@@ -297,14 +326,75 @@ namespace PPnpc
 				 typeof(Canvas), 
 				 typeof(TextMeshProUGUI), 
 				 typeof(Optout)) as GameObject;
-			NpcHoverStats xHoverStats = MyGo.AddComponent<NpcHoverStats>();
-			xHoverStats.NPC           = myNpc;
+			NpcHoverStats xHoverStats  = MyGo.AddComponent<NpcHoverStats>();
+			xHoverStats.NPC            = myNpc;
+			xHoverStats.NPC.HoverStats = xHoverStats;
 			return xHoverStats;
-        }
+		}
 
-		
+
 
 	}
 
+
+	public struct StatsIcon
+	{
+		public GameObject IconG;
+		public GameObject ImageG;
+		public Image IconImage;
+		public IconTypes IconType;
+		public int IcPo;
+
+
+		public StatsIcon( IconTypes iType, int IconPosition, Canvas canvas )
+		{
+			IconType = iType;
+			IcPo     = IconPosition;
+			IconG    = new GameObject("StatsIcon") as GameObject;
+			IconG.transform.SetParent(canvas.transform, false);
+
+			ImageG  = new GameObject("iconImg");
+
+			ImageG.transform.SetParent(IconG.transform, false);
+			ImageG.transform.localScale	      = Vector3.one * 0.015f;
+			ImageG.transform.localPosition    = new Vector2(-0.9f,-0.9f);
+
+			RectTransform rectImage           = ImageG.AddComponent<RectTransform>();
+			rectImage.sizeDelta               = new Vector2(16,16);
+
+			IconImage	                      = ImageG.AddComponent<Image>();
+
+
+			switch( iType )
+			{
+				case IconTypes.Misc:
+					IconImage.sprite = NpcMain.iSprites[IconPosition];
+					break;
+
+
+				case IconTypes.Upgrade:
+					IconImage.sprite = NpcMain.uSprites[IconPosition];
+
+					IconImage.color =  new Color(1f, 1f, 1f, 0.1f);
+					break;
+
+				case IconTypes.Enhancement:
+					IconImage.sprite = NpcMain.eSprites[IconPosition];
+
+					break;
+			}
+		}
+
+		public static void PositionIcons( List<StatsIcon> statsIcons )
+		{
+			int pos = 0;
+
+			foreach ( StatsIcon icon in statsIcons )
+			{
+				icon.ImageG.transform.localPosition = new Vector2(-0.9f,-0.9f) + (new Vector2(0.35f, 0) * pos);
+				pos++;
+			}
+		}
+	}
 
 }
