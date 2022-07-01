@@ -67,6 +67,23 @@ namespace PPnpc
 		Upgrade,
 	}
 
+	public enum SwingState
+	{
+		idle,
+		ready,
+		preswing,
+		cocked,
+		swing,
+		recover,
+	}
+
+	public enum SwingStyle
+	{
+		jab,
+		over,
+		under,
+	}
+
 	public struct LimbHit
     {
 		public NpcBehaviour Attacker;
@@ -108,7 +125,8 @@ namespace PPnpc
 		Karate,
 		Firearms,
 		Melee,
-		
+		NoGunSign,
+		NoFightSign,
 	}
 
 	public enum AIMethods
@@ -133,6 +151,14 @@ namespace PPnpc
 		Minimal,
 		Normal,
 		Debug,
+	}
+
+
+	public struct SignPost
+	{
+		public Gadgets SignType;
+		public float xStart;
+		public float xEnd;
 	}
 
 	public struct WeaponBasics
@@ -288,6 +314,8 @@ namespace PPnpc
 		public static List<PersonBehaviour> AllPersons = new List<PersonBehaviour>();
 		public static List<PhysicalBehaviour> AllItems = new List<PhysicalBehaviour>();
 		public static List<PhysicalBehaviour> NewItems = new List<PhysicalBehaviour>();
+
+		public static List<SignPost> SignPosts = new List<SignPost>();
 
 		public static bool[] Rebirthers = new bool[]{false,false,false,false,false};
 

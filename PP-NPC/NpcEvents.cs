@@ -279,23 +279,17 @@ namespace PPnpc
                 case EventIds.Birth:
                     if ( npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Annoyed",-1 * importance);
+                        npc.Mojo.Feel("Fear",-1 * importance);
                     }
                     else if ( npc.Config.HostileTypes != null && npc.Config.HostileTypes.Contains( sender.Config.NpcType ) )
                     {
-                        npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
-                    }
-                    else if ( npc.Config.NpcType == sender.Config.NpcType )
-                    {
-                        npc.Mojo.Feel("Annoyed",-1);
                     }
                     break;
 
                 case EventIds.Death:
                     if (npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
                         npc.Mojo.Feel("Fear",1 * importance);
                     }
@@ -305,7 +299,6 @@ namespace PPnpc
                     }
                     else if ( npc.Config.NpcType == sender.Config.NpcType )
                     {
-                        npc.Mojo.Feel("Annoyed",1);
                         npc.Mojo.Feel("Fear",2 * importance);
                     }
                     else
@@ -317,20 +310,16 @@ namespace PPnpc
                 case EventIds.Killed:
                     if ( npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(sender.Config.NpcType))
                     {
-                        npc.Mojo.Feel("Annoyed",-1 * importance);
                     }
                     else if ( npc.Config.HostileTypes != null && npc.Config.HostileTypes.Contains( sender.Config.NpcType ) )
                     {
-                        npc.Mojo.Feel("Annoyed",1 * importance);
                         npc.Mojo.Feel("Angry",1 * importance);
                     }
                     else if ( npc.Config.NpcType == sender.Config.NpcType )
                     {
-                        npc.Mojo.Feel("Annoyed",-1);
                     }
                     else
                     {
-                        npc.Mojo.Feel("Annoyed",0.1f * importance);
                         npc.Mojo.Feel("Angry",0.1f * importance);
                     }
                     break;
@@ -343,19 +332,16 @@ namespace PPnpc
                     if ( npc.Config.FriendlyTypes != null && npc.Config.FriendlyTypes.Contains(victimType))
                     {
                         npc.Mojo.Feel("Angry",1 * logImportance);
-                        npc.Mojo.Feel("Annoyed",1 * logImportance);
                         npc.Mojo.Feel("Fear",1 * logImportance);
                         npc.Mojo.Feel("Tired",-1 * logImportance);
                     }
                     else if ( npc.Config.HostileTypes != null && npc.Config.HostileTypes.Contains( victimType ) )
                     {
-                        npc.Mojo.Feel("Annoyed",-1 * logImportance);
                         npc.Mojo.Feel("Angry",-1 * logImportance);
                     }
                     else if ( npc.Config.NpcType == victimType )
                     {
                         npc.Mojo.Feel("Angry",2 * logImportance);
-                        npc.Mojo.Feel("Annoyed",2 * logImportance);
                         npc.Mojo.Feel("Fear",2 * logImportance);
                         npc.Mojo.Feel("Tired",-1 * logImportance);
                     }

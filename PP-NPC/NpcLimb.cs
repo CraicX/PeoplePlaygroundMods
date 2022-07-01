@@ -217,7 +217,7 @@ namespace PPnpc
 
 				
 
-				if( !NPC.CheckedJoints ) StartCoroutine(NPC.ICheckJoints());
+				//if( !NPC.CheckedJoints ) StartCoroutine(NPC.ICheckJoints());
 
 				LodgedLimbs[coll] = Time.time;
 
@@ -250,7 +250,6 @@ namespace PPnpc
 
 						if (mag > 20) NPC.MyTargets.enemy = otherNpc;
 					
-						NPC.Mojo.Feel("Annoyed", mag * 0.3f);
 						NPC.Mojo.Feel("Angry", mag * 0.4f);
 
 						foreach(NpcHand hand in NPC.Hands) { 
@@ -290,7 +289,6 @@ namespace PPnpc
 				//if (otherNpc.CurrentAct == NpcActions.Walking) points *= 0.7f;
 				if (NPC.Action.CurrentAction == "Wander") points *= 0.9f;
 
-				NPC.Mojo.Feel("Annoyed", points * 0.3f);
 				NPC.Mojo.Feel("Angry", points * 0.3f);
 
 				//NPC.ResetCollisions(otherNpc);
@@ -312,16 +310,25 @@ namespace PPnpc
 			}
 			else
 			{
-				if ((NPC.Action.CurrentAction == "Scavenge" || NPC.Action.CurrentAction == "GearUp" || NPC.Action.CurrentAction == "Wander") && coll.gameObject.TryGetComponent<Props>( out Props prop ) )
+				if ( coll.gameObject.TryGetComponent<Props>( out Props prop ) )
 				{
-					if (Time.time > NPC.TimerIgnorePickup) NPC.OpenHand.Hold( prop );
-					xxx.ToggleCollisions(transform, prop.P.transform,false, true);
-				}
+					if ( prop.NoGhost ) return;
+					if ((NPC.Action.CurrentAction == "Scavenge" || NPC.Action.CurrentAction == "GearUp" || NPC.Action.CurrentAction == "Wander" || NPC.ArsenalTimer > Time.time) )
+					{
+						if (prop.canUpgrade) {
+							if (LB.RoughClassification == LimbBehaviour.BodyPart.Head) return;
+							xxx.ToggleCollisions(transform, prop.P.transform,false, false);
+						}
 
-				if ( LB.RoughClassification == LimbBehaviour.BodyPart.Head && NPC.AIMethod == AIMethods.AIChip )
-				{
-					//	got clocked in the head and has a chip
-					if ( coll.contacts[0].relativeVelocity.magnitude > 10f ) StartCoroutine( "IShortCircuit" );
+						if (Time.time > NPC.TimerIgnorePickup) NPC.OpenHand.Hold( prop );
+						xxx.ToggleCollisions(transform, prop.P.transform,false, true);
+					}
+
+					if ( LB.RoughClassification == LimbBehaviour.BodyPart.Head && NPC.AIMethod == AIMethods.AIChip )
+					{
+						//	got clocked in the head and has a chip
+						if ( coll.contacts[0].relativeVelocity.magnitude > 10f ) StartCoroutine( "IShortCircuit" );
+					}
 				}
 			}
 		}

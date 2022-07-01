@@ -111,19 +111,19 @@ namespace Utilities
 						continue;
 					} 
 
-					if ( pb.TryGetComponent<FixedJoint2D>( out FixedJoint2D joint ) )
-					{
-					   if ( PBO = joint.connectedBody.GetComponentInParent<PersonBehaviour>() )
-					   {
-							if (!Persons.Contains(PBO)) {
-								Persons.Add(PBO);
-								Attachments.Add(PBO.GetInstanceID(),GetAttachments(PBO));
-							}
+					//if ( pb.TryGetComponent<FixedJoint2D>( out FixedJoint2D joint ) )
+					//{
+					//   if ( PBO = joint.connectedBody.GetComponentInParent<PersonBehaviour>() )
+					//   {
+					//		if (!Persons.Contains(PBO)) {
+					//			Persons.Add(PBO);
+					//			Attachments.Add(PBO.GetInstanceID(),GetAttachments(PBO));
+					//		}
 
-							if (PBs.Length > 1) NoFlip.Add(pb);
-							continue; 
-					   }
-					}
+					//		if (PBs.Length > 1) NoFlip.Add(pb);
+					//		continue; 
+					//   }
+					//}
 
 					if ( CAR = pb.transform.root.GetComponentInChildren<RandomCarTextureBehaviour>() )
 					{
@@ -160,26 +160,26 @@ namespace Utilities
 					}
 				}
 
-				foreach (FixedJoint2D joint in UnityEngine.Object.FindObjectsOfType<FixedJoint2D>())
-				{
-					if (!joint || !joint.gameObject || !joint.connectedBody ) continue;
+				//foreach (FixedJoint2D joint in UnityEngine.Object.FindObjectsOfType<FixedJoint2D>())
+				//{
+				//	if (!joint || !joint.gameObject || !joint.connectedBody ) continue;
 
-					if (!joint.gameObject.TryGetComponent<PhysicalBehaviour>(out PhysicalBehaviour attObj)) continue;
+				//	if (!joint.gameObject.TryGetComponent<PhysicalBehaviour>(out PhysicalBehaviour attObj)) continue;
 
-					if (attObj.beingHeldByGripper) continue;
+				//	if (attObj.beingHeldByGripper) continue;
 
-					if (!joint.connectedBody.TryGetComponent<PhysicalBehaviour>(out PhysicalBehaviour body)) continue;
+				//	if (!joint.connectedBody.TryGetComponent<PhysicalBehaviour>(out PhysicalBehaviour body)) continue;
 				
-					if (body.beingHeldByGripper || body.name == "Brain" || attObj.name == "Brain" || body.beingHeldByGripper) continue;
+				//	if (body.beingHeldByGripper || body.name == "Brain" || attObj.name == "Brain" || body.beingHeldByGripper) continue;
 				
-					if (!body.transform.root.TryGetComponent<PersonBehaviour>(out PersonBehaviour PBATT)) continue;
+				//	if (!body.transform.root.TryGetComponent<PersonBehaviour>(out PersonBehaviour PBATT)) continue;
 
-					if (PBATT != PBO) continue;
+				//	if (PBATT != PBO) continue;
 
-					Attachment att = new Attachment(joint.attachedRigidbody.transform, body.rigidbody, joint);
+				//	Attachment att = new Attachment(joint.attachedRigidbody.transform, body.rigidbody, joint);
 				
-					if (!attList.Contains(att)) attList.Add(att);
-				}
+				//	if (!attList.Contains(att)) attList.Add(att);
+				//}
 
 				return attList.ToArray();
 			}

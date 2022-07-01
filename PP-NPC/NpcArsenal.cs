@@ -655,8 +655,16 @@ namespace PPnpc
 			yield return new WaitForFixedUpdate();
 			Vector2 direction;
 
+			
+
 			while ( prop && prop.P )
 			{
+				if ( prop.P.beingHeldByGripper )
+				{
+					if (!BorrowedProps.Contains(prop)) BorrowedProps.Add(prop);
+					if (IdleDroppedList.ContainsKey(prop)) IdleDroppedList.Remove(prop);
+					yield break;
+				}
 				yield return new WaitForFixedUpdate();
 				direction = transform.position - prop.transform.position;
 

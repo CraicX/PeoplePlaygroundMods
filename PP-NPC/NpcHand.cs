@@ -34,10 +34,11 @@ namespace PPnpc
 		public PhysicalBehaviour uArm;
 		public LimbBehaviour uArmL;
 		public float PoseSkillOffset = 1f;
+		public FixedJoint2D GrabJoint;
 
 		int myPointID = 0;
 
-
+		public SwingState swingState = SwingState.idle;
 		public bool DualWield      = false;
 		public bool IsFiring       = false;
 		public bool IsHolding      = false;
@@ -139,11 +140,12 @@ namespace PPnpc
 			}
 		}
 
-		//public void Drop()     => PG.Drop(this);
-		public bool CanAim       => (bool)(Tool != null && Tool.CanAim    && LB != null && LB.IsConsideredAlive); 
-		public bool CanAttack    => (bool)(Tool != null && Tool.CanStrike && LB != null && LB.IsConsideredAlive); 
-		public string HandId     => (this == NPC.FH) ? "Front" : "Back";
-		public NpcHand AltHand   => (this == NPC.FH) ? NPC.BH : NPC.FH;
+		//public void Drop()          => PG.Drop(this);
+		public bool CanAim            => (bool)(Tool != null && Tool.CanAim    && LB != null && LB.IsConsideredAlive); 
+		public bool CanAttack         => (bool)(Tool != null && Tool.CanStrike && LB != null && LB.IsConsideredAlive); 
+		public string HandId          => (this == NPC.FH) ? "Front" : "Back";
+		public string HandShortId     => (this == NPC.FH) ? "fh" : "bh";
+		public NpcHand AltHand        => (this == NPC.FH) ? NPC.BH : NPC.FH;
 
 
 
@@ -273,7 +275,7 @@ namespace PPnpc
 					Tool.Activate(Tool.props.isAutomatic);
 					NPC.Mojo.Feel("Bored",-5f);
 					NPC.Mojo.Feel("Angry",-3f);
-					NPC.Mojo.Feel("Annoyed",-2f);
+					NPC.Mojo.Feel("Fear",-5f);
 					NPC.PBO.AdrenalineLevel = Mathf.Clamp(NPC.PBO.AdrenalineLevel + 1, 1, 5);
 				}
 			}
@@ -288,7 +290,6 @@ namespace PPnpc
 
 			//	NPC.Mojo.Feel("Angry", -5f);
 			//	NPC.Mojo.Feel("Bored", -5.5f);
-			//	NPC.Mojo.Feel("Annoyed", -2.5f);
 
 			//	NPC.PBO.AdrenalineLevel += 1f;
 
@@ -373,7 +374,7 @@ namespace PPnpc
 			{
 				if (Tool && Tool.Hand && Tool.Hand.NPC != NPC ) Drop();
 				Check();
-
+				ResetGlobals();
 				yield return new WaitForSeconds(1);
 			}
 
@@ -392,7 +393,7 @@ namespace PPnpc
 			}
 
 			if (prop.canUpgrade)
-            {
+			{
 				NpcChip chip = prop.P.GetComponent<NpcChip>();
 				bool need=  false;
 				if (chip.ChipType == Chips.Memory && !NPC.EnhancementMemory) need = true;
@@ -404,7 +405,7 @@ namespace PPnpc
 				else if (chip.ChipType == Chips.Firearms && !NPC.EnhancementFirearms) need = true;
 
 				if (!need) return;
-            }
+			}
 
 			Validate();
 			if (!ValidateItem(prop.P)) return;
@@ -432,11 +433,14 @@ namespace PPnpc
 			StartCoroutine(IResetPosition());
 
 			if (AltHand.IsHolding) NPC.Goals.Scavenge = false;
-			if (prop.canShoot || prop.canStab || prop.canStrike) NPC.Goals.Attack = true;
+			if (prop.canShoot || prop.canStab || prop.canStrike) {
+				NPC.Goals.Attack = true;
+				NPC.Mojo.Feelings["Fear"] *= 0.1f;
+			}
 
 			if (prop.canRecruit) NPC.Goals.Recruit = true;
 			if (prop.canUpgrade) NPC.Goals.Upgrade = true;
-
+			if ( prop.Traits["sword"] ) NPC.HasSword = true;
 			if (prop.canStab) NPC.HasKnife        = true;
 			if ( prop.Traits["club"] ) {
 				NPC.HasClub       = true;
@@ -456,7 +460,25 @@ namespace PPnpc
 			GB.DropObject();
 			IsHolding = IsAiming = FireAtWill = false;
 
+			ResetGlobals();
+
 		}
+
+		public void ResetGlobals()
+		{
+			NPC.Goals.Scavenge  = (!IsHolding || !AltHand.IsHolding) ;
+			NPC.Goals.Attack    = (Tool && (Tool.props.canShoot || Tool.props.canStab || Tool.props.canStrike)) ||
+			                      (AltHand.Tool && (AltHand.Tool.props.canShoot || AltHand.Tool.props.canStab || AltHand.Tool.props.canStrike)) ;
+
+			NPC.Goals.Recruit   = (Tool && Tool.props.canRecruit)           || (AltHand.Tool && AltHand.Tool.props.canRecruit);
+			NPC.Goals.Upgrade   = (Tool && Tool.props.canUpgrade)           || (AltHand.Tool && AltHand.Tool.props.canUpgrade); 
+			NPC.HasKnife        = (Tool && Tool.props.Traits["knife"] ) || (AltHand.Tool && AltHand.Tool.props.Traits["knife"] );
+			NPC.HasExplosive    = (Tool && Tool.props.canExplode)           || (AltHand.Tool && AltHand.Tool.props.canExplode);
+			NPC.HasFireF        = (Tool && Tool.props.canFightFire)         || (AltHand.Tool && AltHand.Tool.props.canFightFire);
+			NPC.HasClub         = (Tool && Tool.props.Traits["club"])   || (AltHand.Tool && AltHand.Tool.props.Traits["club"]);
+			NPC.HasSword        = (Tool && Tool.props.Traits["sword"])  || (AltHand.Tool && AltHand.Tool.props.Traits["sword"]);
+		}
+
 
 		public void Stop()
 		{
@@ -683,6 +705,42 @@ namespace PPnpc
 			return results;
 		}
 
+		public IEnumerator IGrab( Rigidbody2D target, float delay=0 )
+        {
+			IsGrabbing = false;
+			if (GrabJoint) UnityEngine.Object.DestroyImmediate((UnityEngine.Object) GrabJoint);
+
+			ConfigHandForAiming(true);
+
+			Vector2 dir;
+
+			if (delay > 0) yield return new WaitForSeconds(delay);
+			LB.Broken = uArmL.Broken = true;
+			do { 
+				dir = Vector2.MoveTowards(T.position, target.position, 2f * Time.fixedDeltaTime);
+				RB.MovePosition(dir);
+				yield return new WaitForFixedUpdate();
+			} while (-NPC.Facing * T.position.x < -NPC.Facing * target.position.x && Vector2.Distance(T.position, target.position) > 0.3f);
+			if (!target) {
+				LB.Broken = uArmL.Broken = false;
+				yield break;
+
+			}
+			if (Vector2.Distance(T.position,target.position) > 0.3f) yield break;
+		
+			GrabJoint                 = RB.gameObject.AddComponent<FixedJoint2D>() as FixedJoint2D;
+			GrabJoint.dampingRatio    = 1;
+			GrabJoint.frequency       = 0;
+			GrabJoint.connectedBody   = target.gameObject.GetComponent<Rigidbody2D>();
+			GrabJoint.breakForce	  = 200f;
+			GrabJoint.breakTorque     = 100f;
+			GrabJoint.enabled         = true;
+
+			IsGrabbing			      = true;
+			LB.Broken                 = uArmL.Broken = false;
+        }
+
+		public bool IsGrabbing = false;
 
 		public IEnumerator IStab( Transform target )
 		{

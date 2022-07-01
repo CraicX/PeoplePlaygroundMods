@@ -17,19 +17,56 @@ using System.Collections;
 
 namespace PPnpc
 {
+	public enum AbilityPower
+	{
+		PowerPunch,
+		SmallFire,
+		Web,
+		Shield,
+		CloseCombat,
+		ForceField,
+		Movement,
+		BigFire,
+		DeathBeam,
+	}
+
+	public struct Abilities
+	{
+		public AbilityPower Head;
+		public AbilityPower UpperBody;
+		public AbilityPower MiddleBody;
+		public AbilityPower LowerBody;
+		public AbilityPower UpperArm;
+		public AbilityPower UpperArmFront;
+		public AbilityPower LowerArm;
+		public AbilityPower LowerArmFront;
+		public AbilityPower UpperLeg;
+		public AbilityPower UpperLegFront;
+		public AbilityPower LowerLeg;
+		public AbilityPower LowerLegFront;
+		public AbilityPower Foot;
+		public AbilityPower FootFront;
+	}
+
 	public class NpcChip : MonoBehaviour
 	{
 		public Chips ChipType = Chips.Engineer;
+
+		public Abilities ChipAbilities = new Abilities();
+
+		public bool ShowAbilities = false;
+
+		public SpriteRenderer efxSR;
+		public GameObject efxGO;
 		
 		public NpcGadget Expansion;
 
 		public Coroutine AnimateRoutine;
 		public Coroutine xCoroutine;
-		
+		public bool hasAI = false;
 		public PhysicalBehaviour PB;
 		[SkipSerialisation]
 		public PersonBehaviour TargetPerson;
-		[SkipSerialisation]
 		public Transform TargetTrans;
 		[SkipSerialisation]
 		public DistanceJoint2D spring;
@@ -62,6 +99,7 @@ namespace PPnpc
 
 		public NpcChip ChildChip     = null;
 		public NpcChip ParentChip    = null;
+		
 		
 		[SkipSerialisation]
 		public Dictionary<string, Rigidbody2D>   RB  = new Dictionary<string, Rigidbody2D>();
@@ -194,12 +232,29 @@ namespace PPnpc
 		{
 			if ( ChipType == Chips.AI )
 			{
+				audioSource.enabled      = true;
 				audioSource.PlayOneShot(NpcMain.GetSound("change-team"), 2f);
 				TeamId += 1;
 				string teamColor = xxx.GetTeamColor(TeamId);
 				MiscStrings[0] = teamColor;
 				MiscStrings[1] = teamColor;
 			}
+
+			if ( ChipType == Chips.Hero )
+			{
+				ShowAbilities = !ShowAbilities;
+
+				if (ShowAbilities) ShowHeroAbilities();
+			}
+
+		}
+
+		public void ShowHeroAbilities()
+		{
+			GameObject AO = new GameObject("HeroAbilities", typeof(SpriteRenderer));
+			AO.transform.SetParent(transform, false );
+
+			SpriteRenderer sr = AO.GetComponent<SpriteRenderer>();
 
 		}
 
@@ -208,7 +263,7 @@ namespace PPnpc
 		{
 			AddBoxTop();
 
-			audioSource              = gameObject.AddComponent<AudioSource>();
+			audioSource              = gameObject.GetOrAddComponent<AudioSource>();
 			audioSource.spread       = 35f;
 			audioSource.volume       = 1f;
 			audioSource.minDistance  = 15f;
@@ -216,10 +271,45 @@ namespace PPnpc
 			audioSource.dopplerLevel = 0f;
 		}
 
-		void Awake()
-		{
+		//IEnumerator IChipEFX()
+		//{
 
-		}
+			
+		//	efxGO =  new GameObject("efxGo", typeof(SpriteRenderer)) as GameObject;
+		//	efxGO.transform.SetParent(transform, false);
+		//	efxGO.transform.position   = transform.position;
+		//	efxGO.transform.rotation   = transform.rotation;
+		//	efxGO.transform.localScale = transform.localScale;
+
+		//	efxSR = efxGO.GetComponent<SpriteRenderer>();
+		//	efxSR.material = ModAPI.FindMaterial("VeryBright");
+
+		//	if ( ChipType == Chips.Hero ){
+		//	//{
+		//		efxSR.sprite = NpcMain.ChipEFX[0];
+
+		//		efxSR.color = Color.yellow;
+
+		//		//Mathf.PingPong((Time.time + MiscFloats[0]) * 0.1f, 1), 1, 1));
+
+		//		float c = Mathf.PingPong(Time.time, 1) + 0.2f;
+
+		//		while ( hasAI )
+		//		{
+		//			efxSR.color = Color.Lerp(new Color(0.1f,0.1f,0.1f,0.1f), new Color(0.5f,0.1f,0.1f,0.1f), Time.time);
+		//			yield return new WaitForFixedUpdate();
+		//		}
+
+		//		efxSR.material = ModAPI.FindMaterial("Sprites-Default");
+
+				
+
+		//	}
+
+
+
+		//	yield break;
+		//}
 		
 		
 
@@ -229,18 +319,27 @@ namespace PPnpc
 
 			NpcBehaviour xnpc = TargetPerson.gameObject.GetOrAddComponent<NpcBehaviour>();
 			xnpc.DisableFlip = true;
-			while ( Time.time < MiscTimers[1] )
+			float timeout = Time.time + 3f;
+
+			while ( Time.time < timeout + 1 )
 			{
 				transform.position = Vector2.Lerp(transform.position,TargetTrans.position, Time.fixedDeltaTime );
 				Vector3 LastPos    = transform.position;
 				Vector3 zpos       = Vector2.Lerp(transform.position,TargetTrans.position, Time.fixedDeltaTime );
 				Vector3 diffpos    = LastPos - zpos;
 
+
+				if ( Time.time > timeout )
+				{
+					transform.position = TargetTrans.position;
+					xxx.ToggleCollisions(transform, TargetTrans, true, false);
+					break;
+				}
 				//transform.position = zpos;
-				//if ( ChildChip && ChildChip.gameObject )
-				//{
-				//	ChildChip.MoveChild(diffpos);	
-				//}
+				if ( ChildChip && ChildChip.gameObject )
+				{
+					ChildChip.MoveChild(diffpos);	
+				}
 				yield return new WaitForFixedUpdate();
 
 			}
@@ -253,7 +352,7 @@ namespace PPnpc
 
 			//	yield return new WaitForFixedUpdate();
 			//}
-
+			audioSource.enabled = true;
 			switch ( ChipType )
 			{
 				case Chips.Memory:
@@ -293,7 +392,7 @@ namespace PPnpc
 			}
 
 			while (audioSource.isPlaying) yield return new WaitForFixedUpdate();
-			StopAllCoroutines();
+			//StopAllCoroutines();
 			xnpc.DisableFlip = false;
 
 			Destroy(this);
@@ -381,7 +480,7 @@ namespace PPnpc
 
 							yield return new WaitForEndOfFrame();
 
-							if(gameObject.TryGetComponent<FixedJoint2D>( out FixedJoint2D joint2D)) {
+							if(gameObject.TryGetComponent<WheelJoint2D>( out WheelJoint2D joint2D)) {
 								GameObject.Destroy(joint2D);
 								Lights[0].enabled = Lights[1].enabled = false;
 								GameObject.Destroy(Lights[0].gameObject);
@@ -395,6 +494,7 @@ namespace PPnpc
 
 							if ( AlreadyAI )
 							{
+								audioSource.enabled = true;
 								audioSource.PlayOneShot(NpcMain.GetSound("problem"), 1f);
 
 								ExplosiveBehaviour explosion = TargetPerson.Limbs[0].gameObject.GetOrAddComponent<ExplosiveBehaviour>();
@@ -425,7 +525,7 @@ namespace PPnpc
 							}
 
 							foreach( LimbBehaviour limbx in TargetPerson.Limbs ) limbx.Broken = false;
-
+							audioSource.enabled = true;
 							audioSource.PlayOneShot(NpcMain.GetSound("success"), 1f);
 							
 							yield return new WaitForSeconds(3);
@@ -442,13 +542,14 @@ namespace PPnpc
 			}
 
 			StopAllCoroutines();
-			Destroy(this);
 			DestroyImmediate(gameObject);
+			Destroy(this);
 
 		}
 
 		void OnJointBreak2D (Joint2D brokenJoint) {
-
+			hasAI = false;
+			Reset();
 			ConnectCoolDown = Time.time + 0.5f;
 
 			ModAPI.CreateParticleEffect("Spark", transform.position);
@@ -465,7 +566,9 @@ namespace PPnpc
 			if (g && g.TryGetComponent<NpcChip>( out NpcChip chip ) ) return (chip.IsChip);
 			return false;
 		}
-
+		
+		bool doEfx = false;
+		
 		public void MoveChild(Vector3 pos)
 		{
 			transform.position -= pos;
@@ -490,7 +593,24 @@ namespace PPnpc
 			if (ChildChip) StartCoroutine( ChildChip.EFixChildAlignment() );
 		}
 
+		public void Reset()
+		{
+			doEfx = false; //(RootChip.ChipType == Chips.AI);
+			//ModAPI.Notify(ChipType.ToString() + (doEfx ? "Yes" : "No"));
+			if (ParentChip) ParentChip.Reset();
+		}
 
+		public void updateConnections()
+		{
+			if ( this == RootChip )
+			{
+				if (ParentChip) ParentChip.Reset();
+			}
+		}
+
+		public Coroutine crChildChips = null;
+
+		public NpcChip RootChip => ChildChip ? ChildChip.RootChip : this;
 		private void OnTriggerEnter2D( Collider2D coll=null )
 		{
 			if (coll == null) return;
@@ -513,13 +633,16 @@ namespace PPnpc
 
 					//	Find if connected to an AI chip
 					
-					bool hasAI    = ChipType == Chips.AI;
+					hasAI    = ChipType == Chips.AI;
 					NpcChip xChip = this;
 
 					while ( xChip.ParentChip ) { xChip = xChip.ParentChip; }
 					
 					if (xChip && xChip.ChipType == Chips.AI) hasAI = true;
-					if (hasAI) xChip.audioSource.PlayOneShot(NpcMain.GetSound("chip_connect"), 1f);
+					if (hasAI) {
+						xChip.audioSource.enabled      = true;
+						xChip.audioSource.PlayOneShot(NpcMain.GetSound("chip_connect"), 1f);
+					}
 
 					xxx.ToggleCollisions(coll.gameObject.transform, transform,false,false);
 
@@ -535,7 +658,15 @@ namespace PPnpc
 					joint.breakForce                   = 1.5f;
 					sr2.sortingOrder = sr.sortingOrder - 1;
 
-					StartCoroutine(ChildChip.EFixChildAlignment());
+					if (crChildChips == null ) {
+						crChildChips = StartCoroutine(ChildChip.EFixChildAlignment());
+					}
+
+					//if ( hasAI )
+					//{
+					//	ModAPI.Notify("HasAI");
+					//	StartCoroutine(IChipEFX());
+					//}
 				}
 			}
 		}
@@ -544,7 +675,7 @@ namespace PPnpc
 		{
 			if ( !ChildChip || ChildChip == null ) yield break;
 
-			FixedJoint2D rJoint = gameObject.AddComponent<FixedJoint2D>() as FixedJoint2D;
+			WheelJoint2D rJoint = gameObject.AddComponent<WheelJoint2D>() as WheelJoint2D;
 			rJoint.transform.SetParent(gameObject.transform);
 			rJoint.connectedBody = TargetPerson.Limbs[0].PhysicalBehaviour.rigidbody;
 			rJoint.autoConfigureConnectedAnchor = true;
@@ -554,10 +685,17 @@ namespace PPnpc
 			Vector3 rDist = (position - transform.position);
 
 			Vector3 dir = rDist.normalized;
-
-			while ( dir != Vector3.zero )
+			float timeout = Time.time + 5f;
+			while ( dir != Vector3.zero)
 			{
+				if ( Time.time > timeout )
+				{
+					transform.position = TargetPerson.Limbs[0].transform.position;
+					xxx.ToggleCollisions(transform, TargetPerson.Limbs[0].transform, true, false);
+					break;
+				}
 				transform.Translate(dir * Time.fixedDeltaTime * Time.fixedDeltaTime );
+				
 				yield return new WaitForFixedUpdate();
 			}
 			GameObject.DestroyImmediate(rJoint);
@@ -565,10 +703,7 @@ namespace PPnpc
 			
 		}
 
-		private void OnTriggerEnter2D()
-		{
-			
-		}
+		
 
 		private void OnCollisionEnter2D(Collision2D coll=null)
 		{
@@ -624,7 +759,7 @@ namespace PPnpc
 
 								audioSource.PlayOneShot(NpcMain.GetSound("activating"), 1f);
 
-								FixedJoint2D rJoint = gameObject.AddComponent<FixedJoint2D>() as FixedJoint2D;
+								WheelJoint2D rJoint = gameObject.AddComponent<WheelJoint2D>() as WheelJoint2D;
 
 								rJoint.transform.SetParent(gameObject.transform);
 								rJoint.connectedBody = TargetPerson.Limbs[0].PhysicalBehaviour.rigidbody;
@@ -640,19 +775,19 @@ namespace PPnpc
 
 							}
 
-							//FixedJoint2D joint = gameObject.GetOrAddComponent<FixedJoint2D>();
+							//WheelJoint2D joint = gameObject.GetOrAddComponent<WheelJoint2D>();
 							Vector3 pp = transform.position;
 
 							//transform.position = TargetTrans.position;
 
-							FixedJoint2D xspring = gameObject.GetOrAddComponent<FixedJoint2D>();
+							WheelJoint2D xspring = gameObject.GetOrAddComponent<WheelJoint2D>();
 							//joint.anchor                       = lb.transform.InverseTransformPoint(transform.position);
 
 							xspring.autoConfigureConnectedAnchor = true;
 							xspring.connectedBody = lb.gameObject.GetOrAddComponent<Rigidbody2D>( );
 
 
-							//FixedJoint.autoConfigureConnectedAnchor = false;
+							//WheelJoint2D.autoConfigureConnectedAnchor = false;
 							//pb.rigidbody.constraints = RigidbodyConstraints2D.FreezeRotation;
 
 							gameObject.SetLayer(LayerMask.NameToLayer("Debris"));

@@ -65,7 +65,8 @@ namespace PPnpc
 				return;
 			}
 		   
-			ChatBubble.transform.position = Vector3.Slerp(ChatBubble.transform.position,NPC.Head.position + Offset, Time.fixedDeltaTime);
+			if (NPC && NPC.PBO)
+				ChatBubble.transform.position = Vector3.Slerp(ChatBubble.transform.position,NPC.Head.position + Offset, Time.fixedDeltaTime);
 		}
 
 		void Start()
@@ -139,7 +140,12 @@ namespace PPnpc
 			Quiet();
 		}
 		
-		
+		void OnDestroy()
+		{
+			ChatMessage.text = "";
+			UnityEngine.Object.Destroy(ChatBubble);
+			//UnityEngine.Object.Destroy(ChatMessage.gameObject);
+		}
 		
 
 		public void Quiet()

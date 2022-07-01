@@ -26,6 +26,7 @@ namespace PPnpc
 		public Coroutine AnimateRoutine;
 		public bool BeenActivated = false;
 		public PersonBehaviour TargetPerson;
+		private bool _paused = false;
 		public float Timer1;
 		public float Timer2;
 		public float[] MiscFloats;
@@ -38,7 +39,7 @@ namespace PPnpc
 		private bool AlreadyAI = false;
 		public Dictionary<string, Rigidbody2D>   RB  = new Dictionary<string, Rigidbody2D>();
 		public Dictionary<string, LimbBehaviour> LB  = new Dictionary<string, LimbBehaviour>();
-		public float Facing;
+		public float Facing => (transform.localScale.x < 0.0f) ? 1f : -1f;
 		public PhysicalBehaviour PB;
 		public Coroutine xCoroutine;
 		public NpcGadget Expansion;
@@ -48,6 +49,11 @@ namespace PPnpc
 		public DistanceJoint2D spring;
 		public GameObject TeamSelect;
 		public NpcChip ChildChip;
+		public Rigidbody2D R;
+		public PhysicalBehaviour P;
+		public Vector3 LastPos;
+		public SignPost signPost = new SignPost();
+		public bool SignLeft = false;
 
 		public int TeamId { 
 			get { return Mathf.Clamp(_teamId, 0, NpcGlobal.MaxTeamId); } 
@@ -70,14 +76,95 @@ namespace PPnpc
 			audioSource.minDistance  = 15f;
 			audioSource.spatialBlend = 1f;
 			audioSource.dopplerLevel = 0f;
+
+			LastPos = transform.position;
 		}
 
 
+		void Update()
+		{
+
+
+			if ( this.Gadget == Gadgets.NoFightSign || this.Gadget == Gadgets.NoGunSign )
+			{
+				if ( _paused != Global.main.Paused )
+				{
+					_paused = Global.main.Paused;
+					transform.root.gameObject.SetLayer(_paused ? 9 : 2);
+
+					if ( !_paused )
+					{
+						if ( transform.position != LastPos )
+						{
+							LastPos = transform.position;
+							if ( SignLeft )
+							{
+								signPost.xStart = transform.position.x - 50;
+								signPost.xEnd   = transform.position.x;
+							}
+							else
+							{
+								signPost.xStart = transform.position.x;
+								signPost.xEnd   = transform.position.x + 50;
+							}
+							
+							RescanSigns();
+						}
+					}
+				}
+			}
+		}
+
+
+		public void RescanSigns()
+		{
+			NpcGlobal.SignPosts.Clear();
+
+			NpcGadget[] GadgetList = Global.FindObjectsOfType<NpcGadget>();
+
+			foreach ( NpcGadget gadget in GadgetList )
+			{
+				if ( gadget.Gadget == Gadgets.NoFightSign || gadget.Gadget == Gadgets.NoGunSign )
+				{
+					NpcGlobal.SignPosts.Add(gadget.signPost);
+				}
+
+			}
+
+
+		}
+
+		public void SetupSign()
+		{
+			R = transform.root.GetComponent<Rigidbody2D>();
+			P = transform.root.GetComponent<PhysicalBehaviour>();
+			_paused = !Global.main.Paused;
+			R.bodyType = RigidbodyType2D.Static;
+			signPost.SignType = Gadget;
+
+			if ( transform.position != LastPos )
+			{
+				LastPos = transform.position;
+				if ( SignLeft )
+				{
+					signPost.xStart = transform.position.x - 50;
+					signPost.xEnd   = transform.position.x;
+				}
+				else
+				{
+					signPost.xStart = transform.position.x;
+					signPost.xEnd   = transform.position.x + 50;
+				}
+				// ModAPI.Notify("Start: " + signPost.xStart + " - End: " + signPost.xEnd );
+				RescanSigns();
+			}
+		}
 
 		public void SetupExpansion()
 		{
 			MiscBools = new bool[] {false, false};
 		}
+
 
 
 		void OnJointBreak2D (Joint2D brokenJoint) {
@@ -92,6 +179,11 @@ namespace PPnpc
 				xxx.ToggleCollisions(brokenJoint.connectedBody.transform, transform, true);
 
 			} 
+		}
+
+		void OnDestroy()
+		{
+			RescanSigns();
 		}
 
 		public void MoveChild(Vector3 pos)
@@ -115,7 +207,7 @@ namespace PPnpc
 					Mathf.Abs(coll.gameObject.transform.position.x - transform.position.x) < 0.05f ) { 
 
 					ModAPI.CreateParticleEffect("Spark", transform.position);
-
+					audioSource.enabled      = true;
 					audioSource.PlayOneShot(NpcMain.GetSound("switch", 4));
 
 					xxx.ToggleCollisions(coll.gameObject.transform, transform,false,true);
@@ -169,6 +261,7 @@ namespace PPnpc
 					if ( !AlreadyAI )
 					{
 						ModAPI.CreateParticleEffect("Flash", TargetPerson.Limbs[0].transform.position);
+						audioSource.enabled      = true;
 						audioSource.PlayOneShot(NpcMain.GetSound("success"), 0.5f);
 						NpcBehaviour npc = TargetPerson.transform.root.gameObject.GetOrAddComponent<NpcBehaviour>();
 						yield return new WaitForSeconds( 3 );

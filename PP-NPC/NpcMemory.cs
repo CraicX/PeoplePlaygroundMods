@@ -55,14 +55,48 @@ namespace PPnpc
                 if ( !Stats.ContainsKey( statName ) ) Stats[ statName ] = alphaVal;
                 else Stats[ statName ] += alphaVal;
 
+                CalculateFriendship();
+
                 return Stats[ statName ];
             }
 
             public int SetStat( string statName, int val )
             {
                 Stats[statName] = val;
+                CalculateFriendship();
                 return Stats[ statName ];
             }
+
+            public void CalculateFriendship()
+			{
+                Friendship = 0;
+                foreach ( KeyValuePair<string, int> pair in Stats )
+				{
+					switch ( pair.Key )
+					{
+                        case "Annoying":
+                        case "Trolled":
+                            Friendship += pair.Value;
+                            break;
+
+                        case "Troll":
+                            Friendship -= pair.Value;
+                            break;
+
+                        case "HitMe":
+                        case "ShotMe":
+                            Friendship += pair.Value * 2;
+                            
+                            break;
+
+                        case "HitThem":
+                        case "ShotThem":
+                            Friendship -= pair.Value * 2;
+                            break;
+
+					}
+				}
+			}
 
             public KnownNpc( int _npcId ) => NpcId = _npcId;
 
@@ -96,6 +130,13 @@ namespace PPnpc
             return KnownNpcs[npcId].SetStat( statName, val );
         }
 
+        public float Opinion( int npcId )
+		{
+            if ( !KnownNpcs.ContainsKey( npcId ) ) return 0f;
+
+            return KnownNpcs[npcId].Friendship;
+
+		}
 
         public void CheckNpcMemory( int npcId )
         {

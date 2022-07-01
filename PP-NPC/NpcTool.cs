@@ -194,15 +194,32 @@ namespace PPnpc
 		{
 			bool fixNoCollide = false;
 
-			if (!Hand || !Hand.NPC || !Hand.NPC.PBO) return;
 
 			if (coll.gameObject.layer == 11) {
 				if ( coll.gameObject.name.Contains( "wall" )) xxx.ToggleCollisions(T,coll.transform,false,true);
 				return;		
 			}
-			if (NpcGlobal.ToyNames.Contains(coll.gameObject.name)) {
-				xxx.ToggleCollisions(T, coll.transform,false, true);
-			}
+			string lCase = coll.gameObject.name.ToLower();
+
+			if (NpcGlobal.NoClip.Contains(coll.gameObject.name) || NpcGlobal.NoClipPartial.Any(lCase.Contains)) { 
+				if (coll.gameObject.TryGetComponent<SpriteRenderer>(out SpriteRenderer srx)) { 
+					srx.sortingLayerName = "Background";
+					srx.sortingOrder     = -10;
+				}
+				xxx.ToggleCollisions(T, coll.transform,false, false);
+			} 
+
+			if (lCase.Contains("debris") ) xxx.ToggleCollisions(T, coll.gameObject.transform,false, false);
+
+			//if (NpcGlobal.ToyNames.Contains(coll.gameObject.name)) {
+			//	xxx.ToggleCollisions(T, coll.transform,false, true);
+			//}
+			
+			if (!Hand || !Hand.NPC || !Hand.NPC.PBO) return;
+
+			
+			
+			
 			if ( coll.gameObject.TryGetComponent<PhysicalBehaviour>( out PhysicalBehaviour phys ) )
 			{
 				if (phys.beingHeldByGripper)
@@ -210,6 +227,8 @@ namespace PPnpc
 					fixNoCollide = true;
 				}
 			}
+
+			if (props.NoGhost) return;
 
 			//  Disable collisions between this held item and whoever we bumped into (if we're not fighting)
 			//
@@ -239,6 +258,15 @@ namespace PPnpc
 		{
 			for (; ; )
 			{
+				if (P && !P.beingHeldByGripper)
+				{
+					if (++nogrip > 2) { 
+						Hand = null;
+						xxx.FixCollisions(T);
+						P.MakeWeightful();
+					}
+				} else nogrip = 0;
+
 				if (!Hand 
 					|| !Hand.NPC 
 					|| !Hand.NPC.PBO 
@@ -258,15 +286,7 @@ namespace PPnpc
 						}
 						UnityEngine.Object.Destroy(this);
 					}
-				} else if (P && !P.beingHeldByGripper)
-				{
-
-					if (++nogrip > 5) { 
-						if (NpcMain.DEBUG_LOGGING) Debug.Log(name + "[action]: IValidate:beingHeldByGripper()");
-						Hand = null;
-						xxx.FixCollisions(T);
-					}
-				} else nogrip = 0;
+				} 
 
 				yield return new WaitForSeconds(1);
 			}
@@ -314,7 +334,6 @@ namespace PPnpc
 			P.SendMessage(continuous ? "UseContinuous" : "Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
 
 			Hand.NPC.Mojo.Feelings["Angry"]   *= 0.1f;
-			Hand.NPC.Mojo.Feelings["Annoyed"] *= 0.05f;
 			Hand.NPC.Mojo.Feelings["Fear"]  *= 1.05f;
 		}
 

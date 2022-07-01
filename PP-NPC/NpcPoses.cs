@@ -246,13 +246,13 @@ namespace PPnpc
 			foreach ( LimbBehaviour limb in pb.Limbs )
 			{
 				if (!limb) continue;
-				limb.Health                = limb.InitialHealth;
-				limb.Numbness              = 0.0f;
-				limb.HealBone();
-				limb.CirculationBehaviour.BleedingRate  *= 0.5f;
-				limb.PhysicalBehaviour.BurnProgress     *= 0.5f;
-				limb.SkinMaterialHandler.AcidProgress   *= 0.5f;
-				limb.SkinMaterialHandler.RottenProgress *= 0.5f;
+				//limb.Health                = limb.InitialHealth;
+				//limb.Numbness              = 0.0f;
+				//limb.HealBone();
+				//limb.CirculationBehaviour.BleedingRate  *= 0.5f;
+				//limb.PhysicalBehaviour.BurnProgress     *= 0.5f;
+				//limb.SkinMaterialHandler.AcidProgress   *= 0.5f;
+				//limb.SkinMaterialHandler.RottenProgress *= 0.5f;
 			}
 			pb.OverridePoseIndex = -1;
 		}
@@ -263,14 +263,14 @@ namespace PPnpc
 			{
 				if (NPC.LB?[limbName])
 				{
-					NPC.LB[limbName].Health                = NPC.LB[limbName].InitialHealth;
-					NPC.LB[limbName].Numbness              = 0.0f;
-					NPC.LB[limbName].HealBone();
+					//NPC.LB[limbName].Health                = NPC.LB[limbName].InitialHealth;
+					//NPC.LB[limbName].Numbness              = 0.0f;
+					//NPC.LB[limbName].HealBone();
 
-					NPC.LB[limbName].CirculationBehaviour.BleedingRate  *= 0.5f;
-					NPC.LB[limbName].PhysicalBehaviour.BurnProgress     *= 0.5f;
-					NPC.LB[limbName].SkinMaterialHandler.AcidProgress   *= 0.5f;
-					NPC.LB[limbName].SkinMaterialHandler.RottenProgress *= 0.5f;
+					//NPC.LB[limbName].CirculationBehaviour.BleedingRate  *= 0.5f;
+					//NPC.LB[limbName].PhysicalBehaviour.BurnProgress     *= 0.5f;
+					//NPC.LB[limbName].SkinMaterialHandler.AcidProgress   *= 0.5f;
+					//NPC.LB[limbName].SkinMaterialHandler.RottenProgress *= 0.5f;
 				}
 			}
 
@@ -317,6 +317,14 @@ namespace PPnpc
 			CommonPoses["crouch"].Ragdoll.AnimationSpeedMultiplier = 2.5f;
 			CommonPoses["crouch"].Ragdoll.UprightForceMultiplier   = 1.4f;
 			CommonPoses["crouch"].Import();
+
+			CommonPoses["crouch_2"]	= new NpcPose(npcx, "crouch_2", false);
+			CommonPoses["crouch_2"].Ragdoll.ShouldStandUpright       = true;
+			CommonPoses["crouch_2"].Ragdoll.State                    = PoseState.Rest;
+			CommonPoses["crouch_2"].Ragdoll.Rigidity                 = 1.7f;
+			CommonPoses["crouch_2"].Ragdoll.AnimationSpeedMultiplier = 2.5f;
+			CommonPoses["crouch_2"].Ragdoll.UprightForceMultiplier   = 1.4f;
+			CommonPoses["crouch_2"].Import();
 
 			CommonPoses["takecover"]	= new NpcPose(npcx, "takecover", false);
 			CommonPoses["takecover"].Ragdoll.ShouldStandUpright       = true;
@@ -408,6 +416,27 @@ namespace PPnpc
 			CommonPoses["bat_idle_bh"].Ragdoll.UprightForceMultiplier   = 4f;
 			CommonPoses["bat_idle_bh"].Import();
 			
+			CommonPoses["push_1"]	= new NpcPose(npcx, "push_1", false);
+			CommonPoses["push_1"].Ragdoll.ShouldStandUpright       = true;
+			CommonPoses["push_1"].Ragdoll.State                    = PoseState.Rest;
+			CommonPoses["push_1"].Ragdoll.Rigidity                 = 3.3f;
+			CommonPoses["push_1"].Ragdoll.AnimationSpeedMultiplier = 4.5f;
+			CommonPoses["push_1"].Ragdoll.UprightForceMultiplier   = 4f;
+			CommonPoses["push_1"].Import();
+
+			CommonPoses["push_2"]	= new NpcPose(npcx, "push_2", false);
+			CommonPoses["push_2"].Ragdoll.ShouldStandUpright       = true;
+			CommonPoses["push_2"].Ragdoll.State                    = PoseState.Rest;
+			CommonPoses["push_2"].Ragdoll.Rigidity                 = 6.3f;
+			CommonPoses["push_2"].Ragdoll.AnimationSpeedMultiplier = 14.5f;
+			CommonPoses["push_2"].Ragdoll.UprightForceMultiplier   = 4f;
+			CommonPoses["push_2"].Import();
+
+			
+
+
+			
+			
 			return CommonPoses;
 		}
 
@@ -416,6 +445,36 @@ namespace PPnpc
 		//
 		private static readonly Dictionary<string, string> MoveData = new Dictionary<string, string>()
 		{
+			{ "push_1",
+			  @"Foot:0.7599589,
+				FootFront:-13.48351,
+				Head:-0.6015813,
+				LowerArm:-114.444,
+				LowerArmFront:-109.8304,
+				LowerBody:-0.1533548,
+				LowerLeg:9.473568,
+				LowerLegFront:14.19925,
+				UpperArm:10.05367,
+				UpperArmFront:15.96935,
+				UpperBody:10.54746,
+				UpperLeg:-5.504221,
+				UpperLegFront:16.77979"
+			},
+			{ "push_2",
+			  @"Foot:19.5068,
+				FootFront:-4.996721,
+				Head:-1.428357,
+				LowerArm:1.599951,
+				LowerArmFront:-3.972581,
+				LowerBody:-5.608629,
+				LowerLeg:3.417274,
+				LowerLegFront:20.45719,
+				UpperArm:-101.1487,
+				UpperArmFront:-98.49777,
+				UpperBody:-1.654469,
+				UpperLeg:-23.0309,
+				UpperLegFront:3.612497"
+			},
 			{ "tackle_1",
 			  @"Foot:-6.215636,
 				FootFront:-29.81085,
@@ -445,6 +504,43 @@ namespace PPnpc
 				UpperBody:-0.3288326,
 				UpperLeg:-0.5435874,
 				UpperLegFront:5.117028"
+			},
+			{ "crouch_2",
+			  @"Foot:-29.08334,
+				FootFront:51.64363,
+				LowerBody:0.03313154,
+				LowerLeg:132.1909,
+				LowerLegFront:76.2734,
+				UpperLeg:-90.13804,
+				UpperLegFront:2.811046"
+			},
+			{ "club_over_fh",
+			  @"#LowerArmFront:-36.23891:f4,
+				#UpperArmFront:131.6175:f6,
+				LowerArmFront:-49.12347:f9,
+				UpperArmFront:-134.5342:f9"
+			},
+			{ "club_over_bh",
+			  @"#LowerArm:-73.09756:f4,
+				#UpperArm:149.1487:f6,
+				LowerArm:-49.12347:f10,
+				UpperArm:-134.5342:f10"
+			},
+			{ "club_jab_fh",
+			  @"LowerArmFront:-45.15817:f4,
+				UpperArmFront:98.24236:f6"
+			},
+			{ "club_jab_bh",
+			  @"LowerArm:-45.15817:f4,
+				UpperArm:98.24236:f6"
+			},
+			{ "stab_fh",
+			  @"LowerArmFront:-88.96387:f5,
+				UpperArmFront:80.12676:f5"
+			},
+			{ "stab_bh",
+			  @"LowerArm:-88.96387:f5,
+				UpperArm:80.12676:f5"
 			},
 			{ "survive",
 			  @"Foot:39.82808,
@@ -480,7 +576,7 @@ namespace PPnpc
 			  @"Head:0.001169457,
 				LowerArm:-119.7841,
 				LowerArmFront:-120.7134,
-				LowerBody:-4.973232E-05,
+				#LowerBody:-4.973232E-05,
 				UpperArm:-28.28773,
 				UpperArmFront:-23.47642,
 				UpperBody:0.0001993561,
@@ -494,7 +590,7 @@ namespace PPnpc
 				LowerArm:-69.05737,
 				LowerArmFront:-34.10315,
 				LowerBody:-0.2727596,
-				LowerLeg:4.03408E-05,
+				#LowerLeg:4.03408E-05,
 				LowerLegFront:-0.2099087,
 				UpperArm:128.1161,
 				UpperArmFront:112.4894,
@@ -539,14 +635,15 @@ namespace PPnpc
 				LowerArm:-23.43349,
 				LowerArmFront:-14.85086,
 				LowerBody:0.08582474,
-				LowerLeg:-1.701906,
-				LowerLegFront:61.93295,
+				#LowerLeg:-1.701906,
+				#LowerLegFront:61.93295,
 				UpperArm:-68.15904,
 				UpperArmFront:-68.40199,
 				UpperBody:0.2320249,
-				UpperLeg:-47.8306,
-				UpperLegFront:9.311983"
+				#UpperLeg:-47.8306,
+				#UpperLegFront:9.311983"
 			},
+			
 			{ "frontkick",
 			  @"Foot:-32.00002,
 				FootFront:15.70725
@@ -730,7 +827,7 @@ namespace PPnpc
 				LowerArm:0.007814003,
 				LowerArmFront:-50.8674,
 				LowerBody:0.04533052,
-				LowerLeg:2.134434E-06,
+				#LowerLeg:2.134434E-06,
 				LowerLegFront:0.04618782,
 				UpperArm:0.01312784,
 				UpperArmFront:-12.73461,
@@ -847,23 +944,64 @@ namespace PPnpc
 				LowerArm:-99.12464,
 				UpperArm:59.33511"
 			},
-
-			/*
-			 * #Head:0.06648272,
-				#LowerArm:-43.82706,
-				LowerArmFront:-99.12464,
-				LowerBody:-0.05570553,
-				LowerLeg:-0.00465392,
-				LowerLegFront:26.49835,
-				LowerArm-88.24822,
-				UpperArm-38.09913				
-				#UpperArm:-32.36065,
-				UpperArmFront:59.33511,
-				UpperBody:-0.07466507,
-				UpperLeg:-0.06083713,
-				UpperLegFront:0.01067004"
-			 * 
-			 */
+			
+			{ "knives_1",
+			  @"LowerArm:-40.56781,
+				LowerArmFront:-50.95634,
+				#LowerBody:-0.01225882,
+				UpperArm:-4.919226,
+				UpperArmFront:-114.2601,
+				#UpperBody:0.006542441"
+			},
+			{ "knives_2",
+			  @"LowerArm:-6.56527,
+				LowerArmFront:-75.51614,
+				#LowerBody:0.005356149,
+				UpperArm:44.00834,
+				UpperArmFront:-31.95116,
+				#UpperBody:0.0434575"
+			},
+			{ "witness_1",
+			  @"Head:0.01273713,
+				LowerArm:0.02326362,
+				LowerArmFront:-120.4115,
+				LowerBody:0.03469832,
+				UpperArm:-79.45898,
+				UpperArmFront:-86.69147,
+				UpperBody:-0.005301401"
+			},
+			{ "witness_2",
+			  @"Head:-0.04929711,
+				LowerArm:-0.1934905,
+				LowerArmFront:-120.507,
+				LowerBody:-0.05209492,
+				UpperArm:-0.08445561,
+				UpperArmFront:-53.73262,
+				UpperBody:0.005193719"
+},
+			{ "witness_3",
+			  @"LowerLeg:99.25518,
+				Foot:-14.85995,
+				Head:-8.735194,
+				LowerArm:1.208069,
+				UpperBody:1.166548,
+				UpperArm:-100.2741,
+				LowerArmFront:-41.9669,
+				UpperArmFront:-3.52437,
+				LowerBody:-14.31538,
+				UpperLegFront:8.049814,
+				LowerLegFront:108.0076,
+				FootFront:-14.04154,
+				UpperLeg:-73.00814"
+			},
+			{ "witness_4",
+			  @"Head:-0.1787259,
+				LowerArm:-118.0016,
+				LowerArmFront:-122.0445,
+				UpperArm:-82.323,
+				UpperArmFront:-72.07833,
+				UpperBody:0.08096623"
+			},
 			{ "jump_spin",
 			  @"LowerBody:4.073051,
 				UpperBody:1.87907,

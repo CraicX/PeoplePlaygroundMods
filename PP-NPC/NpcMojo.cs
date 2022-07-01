@@ -27,7 +27,7 @@ namespace PPnpc
 		public Dictionary<string, int> Perks      = new Dictionary<string, int>();
 
 		static string[] s_Stats    = {"Health", "Strength", "Speed", "Energy", "Vision", "Brains", "Aiming"};
-		static string[] s_Feelings = {"Bored", "Fear", "Angry", "Annoyed", "Tired", "Chicken"};
+		static string[] s_Feelings = {"Bored", "Fear", "Angry", "Tired", "Chicken"};
 		static string[] s_Traits   = {"Shy", "Mean", "Friendly", "Playful", "Annoying", "Brave"};
 		static string[] s_Perks    = {"Heal"};
 		
@@ -82,13 +82,7 @@ namespace PPnpc
 			switch ( feeling )
 			{
 				case "Angry":
-					Feelings["Annoyed"] += value * 0.2f;
 					adjValue *= (Traits["Mean"]/100);
-					break;
-
-				case "Annoyed":
-					adjValue *= -(Traits["Friendly"]/100);
-					adjValue *= -(Traits["Playful"]/100);
 					break;
 
 				case "Bored":

@@ -24,6 +24,8 @@ namespace PPnpc
 
 		public int objId;
 
+		public bool NoGhost = false;
+
 		public float size = 0;
 		public float angleOffset  = 0f;
 		public float angleHold    = 0f;
@@ -263,7 +265,10 @@ namespace PPnpc
 
 				AddStyle(AimStyles.Standard,5);
 				AddStyle(AimStyles.Crouched,3);
-				if (isAutomatic) AddStyle(AimStyles.Proned,1);
+				if (isAutomatic) {
+					AddStyle(AimStyles.Proned,1);
+					AddStyle(AimStyles.Spray,1);
+				}
 			}
 			else if (P.TryGetComponent(out ProjectileLauncherBehaviour PLB))
 			{
@@ -381,6 +386,9 @@ namespace PPnpc
 					{
 						if (canStab) Traits["sword"] = true;
 					}
+				} else
+				{
+					Traits["club"] = true;
 				}
 
 				 if (P.TryGetComponent<SingleFloodlightBehaviour>(out _))
