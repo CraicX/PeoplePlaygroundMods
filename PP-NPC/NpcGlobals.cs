@@ -104,6 +104,13 @@ namespace PPnpc
 		PhysicsGun,
 	};
 
+	public enum HeightPos
+	{
+		Standing,
+		Sitting,
+		Laying,
+	}
+
 	public enum Chips
 	{
 		AI,
@@ -114,6 +121,7 @@ namespace PPnpc
 		Engineer,
 		Troll,
 		Hero,
+		nil,
 	}
 
 	public enum Gadgets
@@ -127,6 +135,8 @@ namespace PPnpc
 		Melee,
 		NoGunSign,
 		NoFightSign,
+		NoEntrySign,
+		HealingSign,
 	}
 
 	public enum AIMethods
@@ -159,6 +169,8 @@ namespace PPnpc
 		public Gadgets SignType;
 		public float xStart;
 		public float xEnd;
+		public bool pointingLeft;
+		public Transform Sign;
 	}
 
 	public struct WeaponBasics
@@ -328,7 +340,7 @@ namespace PPnpc
 			"Propeller", "Activation Toggle", "Industrial Generator", "Industrial Gyrostabiliser", "Lagbox", "Life Detector", "Lightbulb", 
 			"Heart Monitor", "Launch Platform", "Metronome", "Liquid Valve", "Centrifuge", "Gate", "Pressure Valve", "Activation Fuse", 
 			"Laser Pointer", "Timed Gate", "Lagbox" , "Heating Element", "Cooling Element", "Gyroscope Stabiliser", "Holographic Display",
-			"Floodlight", "Servo", "Rotor", "Hover Thruster"
+			"Floodlight", "Servo", "Rotor", 
 
 
 		};
@@ -343,12 +355,13 @@ namespace PPnpc
 			"Accumulator", "Liquidentifier", "Decimator", "Electromagnet", "Defibrillator", "Fan", "Fire Detector", "EMP Generator", 
 			"Electricity Transformer", "Crystal", "Crossbow Bolt", "Crate", "Clamp", "BR Signal Converter", "Bowling Pin", "Bicycle",
 			"BG Signal Converter", "Balloon", "Activation Transformer", "Activation Fuse", "Small Bush", "Large Bush", "Tall Tree",
-			"Trunk",  "Launch Platform", "Lightbulb", "Spot Light", "Heating Element", "Cooling Element"
+			"Trunk",  "Launch Platform", "Lightbulb", "Spot Light", "Heating Element", "Cooling Element", "AI Smart Bed", "Wheel1", 
+			"Motorized Wheel", "Hover Thruster", "Expansion",
         };
 
 		public static string[] NoClipPartial =
         {
-			"twig", "branch", "cathode",
+			"twig", "branch", "cathode", "debris",
         };
 
 		//public static void RescanMap(bool ForceRefresh=false)

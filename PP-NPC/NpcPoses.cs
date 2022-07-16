@@ -12,6 +12,7 @@
 //
 //
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace PPnpc
@@ -310,6 +311,14 @@ namespace PPnpc
 		{
 			Dictionary<string, NpcPose> CommonPoses = new Dictionary<string, NpcPose>();
 
+			//CommonPoses["backchoke"] = new NpcPose(npcx, "crouch", false);
+			//CommonPoses["backchoke"].Ragdoll.ShouldStandUpright       = true;
+			//CommonPoses["backchoke"].Ragdoll.State                    = PoseState.Rest;
+			//CommonPoses["backchoke"].Ragdoll.Rigidity                 = 1.7f;
+			//CommonPoses["backchoke"].Ragdoll.AnimationSpeedMultiplier = 2.5f;
+			//CommonPoses["backchoke"].Ragdoll.UprightForceMultiplier   = 1.4f;
+			//CommonPoses["backchoke"].Import();
+
 			CommonPoses["crouch"]	= new NpcPose(npcx, "crouch", false);
 			CommonPoses["crouch"].Ragdoll.ShouldStandUpright       = true;
 			CommonPoses["crouch"].Ragdoll.State                    = PoseState.Rest;
@@ -432,6 +441,17 @@ namespace PPnpc
 			CommonPoses["push_2"].Ragdoll.UprightForceMultiplier   = 4f;
 			CommonPoses["push_2"].Import();
 
+			CommonPoses["dualgrip_fh"]	= new NpcPose(npcx, "dualgrip_fh", false);
+			CommonPoses["dualgrip_fh"].Ragdoll.State                    = PoseState.Rest;
+			CommonPoses["dualgrip_fh"].Ragdoll.AnimationSpeedMultiplier = 14.5f;
+			CommonPoses["dualgrip_fh"].Import();
+
+			CommonPoses["dualgrip_bh"]	= new NpcPose(npcx, "dualgrip_bh", false);
+			CommonPoses["dualgrip_bh"].Ragdoll.State                    = PoseState.Rest;
+			CommonPoses["dualgrip_bh"].Ragdoll.AnimationSpeedMultiplier = 14.5f;
+			CommonPoses["dualgrip_bh"].Import();
+			
+			
 			
 
 
@@ -445,6 +465,60 @@ namespace PPnpc
 		//
 		private static readonly Dictionary<string, string> MoveData = new Dictionary<string, string>()
 		{
+			{ "backchoke_1",
+			  @"Foot:-30.81561,
+				FootFront:-31.07299,
+				LowerArm:-36.55103,
+				LowerArmFront:-27.29266,
+				LowerLeg:117.116,
+				LowerLegFront:117.0252,
+				UpperArm:-40.04952,
+				UpperArmFront:-77.59161,
+				UpperLeg:1.727906,
+				UpperLegFront:-0.2315865,"
+			},
+			{ "backchoke_2",
+			  @"Foot:-5.121628,
+				FootFront:3.860316,
+				#LowerBody:-30.97713,
+				LowerLeg:91.23926,
+				LowerLegFront:64.43069,
+				LowerArm:-56.55715,
+				LowerArmFront:-122.0547,
+				#UpperBody:-0.1077548,
+				UpperArm:-106.0716,
+				UpperArmFront:-67.52489,
+				UpperLeg:-57.16619,
+				UpperLegFront:-48.32033"
+			},
+			{ "punch_1_fh",
+			  @"LowerArm:-29.43817,
+				LowerArmFront:-74.2618,
+				UpperArm:-38.5855,
+				UpperArmFront:81.2953"
+			},
+			{ "punch_2_fh",
+			  @"LowerArm:-88.28956,
+				LowerLeg:0.1316417,
+				LowerLegFront:23.45993,
+				UpperArm:62.45621,
+				UpperLeg:15.42499,
+				UpperLegFront:-45.58267"
+			},
+			{ "punch_1_bh",
+			  @"LowerArmFront:-29.43817,
+				LowerArm:-74.2618,
+				UpperArmFront:-38.5855,
+				UpperArm:81.2953"
+			},
+			{ "punch_2_bh",
+			  @"LowerArmFront:-88.28956,
+				LowerLegFront:0.1316417,
+				LowerLeg:23.45993,
+				UpperArmFront:62.45621,
+				UpperLegFront:15.42499,
+				UpperLeg:-45.58267"
+			},
 			{ "push_1",
 			  @"Foot:0.7599589,
 				FootFront:-13.48351,
@@ -514,17 +588,29 @@ namespace PPnpc
 				UpperLeg:-90.13804,
 				UpperLegFront:2.811046"
 			},
+			{ "dualgrip_fh",
+			  @"LowerArm:-0.1283051:f51,
+			    LowerArmFront:-87.59412:f51,
+			    UpperArm:-67.03825:f51,
+			    UpperArmFront:-1.526814:f51"
+			},
+			{ "dualgrip_bh",
+			  @"LowerArm:-90.21854:f51,
+				LowerArmFront:0.06960646:f51,
+				UpperArm:0.9667112:f51,
+				UpperArmFront:-63.71782:f51"
+			},
 			{ "club_over_fh",
-			  @"#LowerArmFront:-36.23891:f4,
-				#UpperArmFront:131.6175:f6,
-				LowerArmFront:-49.12347:f9,
-				UpperArmFront:-134.5342:f9"
+			  @"#LowerArmFront:-36.23891:f14,
+				#UpperArmFront:131.6175:f16,
+				LowerArmFront:-49.12347:f19,
+				UpperArmFront:-134.5342:f19"
 			},
 			{ "club_over_bh",
-			  @"#LowerArm:-73.09756:f4,
-				#UpperArm:149.1487:f6,
-				LowerArm:-49.12347:f10,
-				UpperArm:-134.5342:f10"
+			  @"#LowerArm:-73.09756:f14,
+				#UpperArm:149.1487:f16,
+				LowerArm:-49.12347:f19,
+				UpperArm:-134.5342:f19"
 			},
 			{ "club_jab_fh",
 			  @"LowerArmFront:-45.15817:f4,

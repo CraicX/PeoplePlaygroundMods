@@ -15,6 +15,7 @@
   "Scripts": [
     "FlipUtility.cs",
     "NpcAction.cs",
+    "NpcActions.cs",
     "NpcArsenal.cs",
     "NpcBehaviour.cs",
     "NpcChat.cs",
@@ -32,6 +33,7 @@
     "NpcPoses.cs",
     "NpcProps.cs",
     "NpcRebirther.cs",
+    "NpcSmartBed.cs",
     "NpcThing.cs",
     "NpcTool.cs",
     "NpcUtils.cs"

@@ -289,8 +289,6 @@ namespace PPnpc
 			return ( enemy 
 				&& enemy.IsAlive()
 				&& enemy.Consciousness > 0.3f 
-				&& enemy.AverageHealth > 1.0f
-				&& enemy.PainLevel < 1.1f
 			);
 		}
 
@@ -479,11 +477,26 @@ namespace PPnpc
 		}
 
 
+		public static bool IsTouching( PhysicalBehaviour p1, PhysicalBehaviour p2 )
+		{
+			if (!p1 || !p2) return false;
+			
+			for ( int i1 = p1.colliders.Length; --i1 >= 0; )
+			{
+				for ( int i2 = p2.colliders.Length; --i2 >= 0; )
+				{
+					if (Physics2D.Distance( p1.colliders[i1], p2.colliders[i2] ).isOverlapped) return true;
+				}
+			}
+			return false;
+		}
+
+
 		public static bool IsColliding(Transform t1, Transform t2, bool goRoot=true)
 		{
 			Collider2D[] colSet1;
 			Collider2D[] colSet2;
-
+			
 			if (goRoot)
 			{
 				if (!t1||!t2||!t1.root||!t2.root) return false;
@@ -492,11 +505,10 @@ namespace PPnpc
 			} else
 			{
 				if (!t1||!t2) return false;
-				colSet1 = t1.GetComponents<Collider2D>();
-				colSet2 = t2.GetComponents<Collider2D>();
+				colSet1 = t1.GetComponentsInChildren<Collider2D>();
+				colSet2 = t2.GetComponentsInChildren<Collider2D>();
 			}
 
-			ContactFilter2D filter = new ContactFilter2D();
 			filter.NoFilter();
 
 			List<Collider2D> colResults = new List<Collider2D>();
@@ -632,113 +644,9 @@ namespace PPnpc
 
 			return lr;
 		}
-
-
-
-
 	}
 
-	public static class FunFacts
-	{
-		public static Dictionary<int,NpcScore> FFList = new Dictionary<int,NpcScore>();
-
-		public class NpcScore
-		{
-			public int NpcId;
-			public string Name;
-
-			public Dictionary<string, int> Facts = new Dictionary<string, int>();
-
-			public NpcScore( int npcId, string npcName )
-			{
-				NpcId	= npcId;
-				Name    = npcName;
-			}
-		}
-
-
-		public static NpcScore Init( int npcId, string npcName="" )
-		{
-			if (FFList.ContainsKey(npcId)) { return FFList[npcId]; }
-
-			FFList[npcId] = new NpcScore( npcId, npcName )
-			{
-				Name  = npcName,
-				NpcId = npcId,
-			};
-
-			return FFList[npcId];
-		}
-
-
-		public static void Inc( int npcId, string key, int val=1 )
-		{
-			if (!FFList.ContainsKey(npcId)) Init(npcId);
-			if (!FFList[npcId].Facts.ContainsKey(key)) { 
-				FFList[npcId].Facts[key] = val; 
-
-			} else FFList[npcId].Facts[key] += val;
-
-			return; 
-		}
-
-
-		public static int Get( int npcId, string key )
-		{
-			return (FFList[npcId].Facts.ContainsKey(key)) ? FFList[npcId].Facts[key] : 0;
-		}
-
-		public static void ShowFunFacts( int npcId )
-		{
-			ModAPI.Notify("");
-			ModAPI.Notify("<size=150%><align=center><color=#581312>[<color=#841D1C>[ <color=#9BE9EA>" + FFList[npcId].Name + "<color=#841D1C> ]<color=#581312>]</color></size>");
-			ModAPI.Notify("<size=110%><align=center><b><color=#5E0817>KILLED</b></color>");
-
-			string[] keys = new string[FFList[npcId].Facts.Count]; 
-
-			FFList[npcId].Facts.Keys.CopyTo(keys,0);
-
-			int[]  vals = new int[FFList[npcId].Facts.Count];  
-
-			FFList[npcId].Facts.Values.CopyTo(vals,0);
-			int pnum = 0;
-
-			string output = "";
-			int v         = 1;
-			foreach ( KeyValuePair<string, int> pair in FFList[npcId].Facts )
-			{
-				if (++pnum % 2 == 0) {
-					v++;
-					output += "<voffset="+ (v * 1.5f) + "em><align=left><pos=10%><size=90%><color=#C72C2A>" + pair.Key + ": <color=#2CC72A><b><pos=50%>" + pair.Value + "</b></color><color=#C72C2A>";
-				}
-				else output += "<pos=60%>" + pair.Key + ": <color=#2CC72A><b><pos=85%>" + pair.Value+ "</b></color></align></voffset>";
-			}
-
-			output += "</voffset>";
-
-
-			ModAPI.Notify("");
-			ModAPI.Notify(output);
-
-
-			ModAPI.Notify("");ModAPI.Notify("");
-
-
-
-		}
-
-		public static string MojoStatsDead( string name1, int val1, string name2, int val2 )
-		{
-			string output = "<align=left><pos=10%><size=90%><color=#C72C2A>" + name2 + ": <color=#2CC72A><b><pos=50%>" + val2 + "</b></color><color=#C72C2A><pos=60%>" + name1 + ": <color=#2CC72A><b><pos=85%>" + val1 + "</b></color></align>";
-
-			return output;
-		}
-
-
-		
-
-
-	}
+	
 
 	public class NpcDeath : MonoBehaviour
 	{
@@ -779,25 +687,15 @@ namespace PPnpc
 				} else yield break;
 
 			}
-			PBO.SetBloodColour(0, 0, 0);
+
 			float timeExplode = Time.time + xxx.rr(SecondsBeforeCrush.Min, SecondsBeforeCrush.Max);
 			while ( Time.time < timeExplode )
 			{
 				foreach( LimbBehaviour limb in PBO.Limbs ) {
 					limb.SkinMaterialHandler.RottenProgress *= DecomposeRate;
-					
-
-					limb.CirculationBehaviour.ForceSetAllLiquid(0f);
-					limb.CirculationBehaviour.Drain(float.MaxValue);
-					limb.IsZombie = true;
-					
-					//limb.CirculationBehaviour.AddLiquid(limb.GetOriginalBloodType(), 1f);
-					//limb.CirculationBehaviour.AddLiquid(Liquid.GetLiquid("LIFE SERUM"), 0.1f);
 				}
 				yield return new WaitForSeconds(1);
 			}
-			
-			
 
 
 			foreach( LimbBehaviour limb in PBO.Limbs ) {
@@ -812,11 +710,6 @@ namespace PPnpc
 						limbBehaviour.Joint.breakForce = 0f;
 					}
 				}
-					limb.CirculationBehaviour.StopAllCoroutines();
-
-				limb.CirculationBehaviour.ForceSetAllLiquid(0f);
-					limb.CirculationBehaviour.Drain(float.MaxValue);
-
 				limb.NodeBehaviour.DisconnectFromEverything();
 				if ( limb.HasJoint )
 				{
@@ -835,21 +728,17 @@ namespace PPnpc
 				}
 
 				yield return new WaitForSeconds(0.1f);
+			}
 
+			foreach ( LimbBehaviour limb in PBO.Limbs )
+			{
+				limb.PhysicalBehaviour.rigidbody.bodyType = RigidbodyType2D.Static;
+				limb.transform.position = new Vector3(-100f, -100f);
 			}
 				
 			foreach( LimbBehaviour limb in PBO.Limbs ) {
 				limb.StopAllCoroutines();
 				limb.transform.localScale = Vector2.zero;
-				limb.enabled = false;
-				FancyBloodSplatController fbs = limb.gameObject.GetComponentInChildren<FancyBloodSplatController>();
-				if (fbs)
-				{
-					fbs.Size = 0.001f;
-					fbs.CollisionLayers = -1;
-				}
-				limb.transform.position = limb.transform.position = new Vector2(-100,-100);
-				limb.transform.gameObject.SetLayer(2);
 				yield return new WaitForFixedUpdate();
 				limb.Crush();
 			}

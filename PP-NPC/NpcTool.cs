@@ -33,6 +33,7 @@ namespace PPnpc
 		public bool CanAim       = false;
 		public bool CanStrike    = false;
 
+		public bool IsFlipped => (bool)(T.localScale.x < 0.0f);
 		public float Facing => (T.localScale.x < 0.0f) ? 1f : -1f;
 
 		public Vector3 HoldingPosition;
@@ -47,9 +48,10 @@ namespace PPnpc
 		public bool TossedTool = false;
 		public Vector3 ThrowNextPos;
 		public Vector2 ThrowVelocity;
-		public List<Transform> NoGhost = new List<Transform>();
 		public Coroutine validate;
 		private int nogrip = 0;
+
+		public Dictionary<Transform, float> BGhost = new Dictionary<Transform, float>();
 
 		void OnGripped( GripBehaviour grip )
         {
@@ -94,10 +96,16 @@ namespace PPnpc
 			if (ThrowNextPos == ThrowTargetPos) ThrownTool = false;
 		}
 
+
 		public void Dropped()
 		{
-			Hand = null;
+			if(Hand && Hand.AltHand && Hand.AltHand.Tool == this) {
+				Hand = Hand.AltHand;
+				return;
+			}
+			else Hand = null;
 			PersonBehaviour[] People = UnityEngine.Object.FindObjectsOfType<PersonBehaviour>();
+			if (P) P.MakeWeightful();
 
 			if ( P && People.Length > 0)
 			{
@@ -107,8 +115,8 @@ namespace PPnpc
 					xxx.ToggleCollisions(P.transform, peep.Limbs[0].transform, true );
 				}
 			}
-
 		}
+
 
 		public void SetTool( PhysicalBehaviour item, NpcHand hand )
 		{
@@ -117,17 +125,19 @@ namespace PPnpc
 				if (hand.Tool == this) hand.Drop();
 			}
 
-			G          = item.gameObject;
-			P          = item;
-			R          = item.rigidbody;
-			T          = G.transform;
+			G  = item.gameObject;
+			P  = item;
+			R  = item.rigidbody;
+			T  = G.transform;
 
 			props = G.GetOrAddComponent<Props>();
 
 			props.Init(item);
 
-			hand.Tool = this;
+			hand.Tool  = this;
 			this.Hand  = hand;
+			
+			hand.NPC.Actions.RecacheMoves = true;
 
 			Array.Sort( P.HoldingPositions,(a,b) => a.x.CompareTo(b.x) );
 
@@ -140,7 +150,6 @@ namespace PPnpc
 			validate = StartCoroutine(IValidate());
 		}
 
-		public bool IsFlipped => (bool)(T.localScale.x < 0.0f);
 
 
 		public void TossTo( Vector3 target, float speed, float arc )
@@ -149,11 +158,8 @@ namespace PPnpc
 			ThrowTargetPos = target;
 			ThrowSpeed     = speed;
 			ThrowArc       = arc;
-
 			ThrowStartPos  = P.transform.position;
 			ThrownTool     = true;
-
-
 		}
 
 		public void ThrowAt( Vector3 target, float speed, float arc )
@@ -165,12 +171,12 @@ namespace PPnpc
 
 			ThrowStartPos  = P.transform.position;
 
-			float gravity = Physics2D.gravity.magnitude; 
-			float distance = Mathf.Abs(target.x - ThrowStartPos.x); 
-			float maxHeight  = distance / 4; 
+			float gravity     = Physics2D.gravity.magnitude; 
+			float distance    = Mathf.Abs(target.x - ThrowStartPos.x); 
+			float maxHeight   = distance / 4; 
 			float startSpeedY = Mathf.Sqrt(2.0f * gravity * maxHeight); 
-			float time = (startSpeedY + Mathf.Sqrt(startSpeedY *  startSpeedY
-							- 2*gravity * target.y))/gravity; 
+			float time        = (startSpeedY + Mathf.Sqrt(startSpeedY *  startSpeedY
+								- 2*gravity * target.y))/gravity; 
 			float startSpeedX = distance / time; 
 
 
@@ -179,8 +185,8 @@ namespace PPnpc
 				// right direction 
 				ThrowVelocity = new Vector2(startSpeedX, startSpeedY); 
 			} 
-			// left direction 
 			else { 
+				// left direction 
 				ThrowVelocity = new Vector2(-startSpeedX, startSpeedY); 
 			} 
 
@@ -189,12 +195,44 @@ namespace PPnpc
 
 		}
 
+		public void PrepWeaponStrike( NpcBehaviour enemy, Transform EnemyTrans )
+		{
+			if (xxx.IsColliding(T,EnemyTrans)) return;
+			xxx.ToggleCollisions(EnemyTrans, T, true, false);
+			enemy.BGhost[T]    = Time.time;
+			BGhost[EnemyTrans] = Time.time;
+		}
+
+
+		public Dictionary<int, float> JammedCollisions = new Dictionary<int, float>();
+
+		float lastColCheck = 0;
+		
+		void OnCollisionStay2D( Collision2D collision )
+		{
+			if (collision == null || !collision.gameObject ) return;
+
+			if (Time.frameCount % 2 == 0) return;
+
+			int hash = collision.otherRigidbody.transform.root.GetHashCode();
+
+			if ( JammedCollisions.TryGetValue( hash, out float jammed ) )
+			{
+				if (Time.time - jammed > 0.5f)
+				{
+					xxx.ToggleCollisions(collision.otherRigidbody.transform, T,false,false);
+					JammedCollisions.Remove( hash );
+				}
+				
+				return;
+			}
+
+			JammedCollisions[hash] = Time.time;
+		}
+
 
 		private void OnCollisionEnter2D(Collision2D coll=null)
 		{
-			bool fixNoCollide = false;
-
-
 			if (coll.gameObject.layer == 11) {
 				if ( coll.gameObject.name.Contains( "wall" )) xxx.ToggleCollisions(T,coll.transform,false,true);
 				return;		
@@ -207,24 +245,28 @@ namespace PPnpc
 					srx.sortingOrder     = -10;
 				}
 				xxx.ToggleCollisions(T, coll.transform,false, false);
+				return;
 			} 
 
-			if (lCase.Contains("debris") ) xxx.ToggleCollisions(T, coll.gameObject.transform,false, false);
+			Transform[] Ts;
 
-			//if (NpcGlobal.ToyNames.Contains(coll.gameObject.name)) {
-			//	xxx.ToggleCollisions(T, coll.transform,false, true);
-			//}
 			
 			if (!Hand || !Hand.NPC || !Hand.NPC.PBO) return;
+			
+			if ( coll.transform == coll.transform.root )
+				Ts = new Transform[] { coll.transform };
+			else
+				Ts = new Transform[] { coll.transform, coll.transform.root };
 
-			
-			
-			
+			if (BGhost.Keys.Intersect(Ts).Any()) return;
+
+
 			if ( coll.gameObject.TryGetComponent<PhysicalBehaviour>( out PhysicalBehaviour phys ) )
 			{
 				if (phys.beingHeldByGripper)
 				{
-					fixNoCollide = true;
+					xxx.ToggleCollisions(T,coll.transform,false, true);
+					return;
 				}
 			}
 
@@ -232,27 +274,16 @@ namespace PPnpc
 
 			//  Disable collisions between this held item and whoever we bumped into (if we're not fighting)
 			//
-			NpcBehaviour otherNpc = coll.gameObject.GetComponentInParent<NpcBehaviour>();
-			if ( otherNpc )
-			{
-				if (!Hand.NPC.MyFights.Contains(otherNpc)) fixNoCollide = true;
-			} else
-			{
-				PersonBehaviour person = coll.gameObject.GetComponentInParent<PersonBehaviour>();
-				if ( person && !NpcBehaviour.DefenseActions.Contains(Hand.NPC.Action.CurrentAction))
-					fixNoCollide = true;
-			}
+			if (coll.transform.root.gameObject.TryGetComponent<NpcBehaviour>(out NpcBehaviour enemy)) {
 
-			 if (fixNoCollide) {
-				if (NoGhost.Contains(coll.transform) || NoGhost.Contains(coll.transform.root)) return;
 
-				xxx.ToggleCollisions(T,coll.transform,false, true);
 
 			}
-
-
+			
+			xxx.ToggleCollisions(T,coll.transform,false, true);
 
 		}
+
 
 		public IEnumerator IValidate()
 		{
@@ -264,6 +295,8 @@ namespace PPnpc
 						Hand = null;
 						xxx.FixCollisions(T);
 						P.MakeWeightful();
+						GameObject.Destroy(this);
+						yield break;
 					}
 				} else nogrip = 0;
 
@@ -287,6 +320,16 @@ namespace PPnpc
 						UnityEngine.Object.Destroy(this);
 					}
 				} 
+
+				//	Clean out expired bGhosts
+				if ( BGhost.Count > 0 )
+				{
+					Transform[] CL = BGhost.Keys.ToArray();
+					for (int i = CL.Length; --i >= 0;)
+					{
+						if ( BGhost[CL[i]] + 2 < Time.time ) BGhost.Remove(CL[i]);
+					}
+				}
 
 				yield return new WaitForSeconds(1);
 			}

@@ -80,18 +80,20 @@ namespace PPnpc
                             break;
 
                         case "Troll":
-                            Friendship -= pair.Value;
+                            //Friendship -= pair.Value;
                             break;
 
                         case "HitMe":
                         case "ShotMe":
+                        case "StabMe":
                             Friendship += pair.Value * 2;
                             
                             break;
 
                         case "HitThem":
                         case "ShotThem":
-                            Friendship -= pair.Value * 2;
+                        case "Stabhem":
+                            //Friendship -= pair.Value * 2;
                             break;
 
 					}

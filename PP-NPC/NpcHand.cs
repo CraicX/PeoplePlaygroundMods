@@ -22,7 +22,7 @@ namespace PPnpc
 	public class NpcHand : MonoBehaviour
 	{
 		private bool _isAiming = false;
-
+		public bool IsPrimaryGrip = true;
 		public NpcBehaviour NPC;
 		public NpcTool Tool;
 		public GripBehaviour GB;
@@ -35,6 +35,8 @@ namespace PPnpc
 		public LimbBehaviour uArmL;
 		public float PoseSkillOffset = 1f;
 		public FixedJoint2D GrabJoint;
+		public Coroutine GrabAct;
+		public int checkGrip = 0;
 
 		int myPointID = 0;
 
@@ -119,7 +121,6 @@ namespace PPnpc
 			{
 				NextFireTime = Time.time + FireRate; // Time.time + xxx.rr(FireRate, FireRate * 10);
 				//Tool.Activate( Tool.isAutomatic);
-				//FunFacts.Inc(NPC.NpcId, "Fired Weapon");
 			}
 
 			//uArmL.Broken = true;
@@ -269,48 +270,18 @@ namespace PPnpc
 			if ( !float.IsNaN( fNum ) ) Tool.R.AddTorque(Mathf.Clamp(fNum * NPC.TotalWeight, -30f, 30f));
 
 			if (FireAtWill && (Tool.props.isAutomatic || Time.time > NextFireTime)) {
-				if (!Tool.props.isAutomatic) FunFacts.Inc(NPC.NpcId,"ShotsFired");
-				NextFireTime = Time.time + xxx.rr(FireRate, FireRate * 5);
+				NextFireTime = Time.time + xxx.rr(FireRate, FireRate * 2);
 				if (GB.isHolding) {
 					Tool.Activate(Tool.props.isAutomatic);
 					NPC.Mojo.Feel("Bored",-5f);
-					NPC.Mojo.Feel("Angry",-3f);
+					NPC.Mojo.Feel("Angry",-1f);
 					NPC.Mojo.Feel("Fear",-5f);
 					NPC.PBO.AdrenalineLevel = Mathf.Clamp(NPC.PBO.AdrenalineLevel + 1, 1, 5);
 				}
 			}
 
 
-			//if (fNum < 0.05f &&
-			//if (FireAtWill && Mathf.Abs(fNum) < 2f && CheckMyShot()) {
-			//if (FireAtWill && Mathf.Abs(fNum) < 2f ) {
-
-			//	FireAtWill = xxx.rr(1,3) == 2;
-
-
-			//	NPC.Mojo.Feel("Angry", -5f);
-			//	NPC.Mojo.Feel("Bored", -5.5f);
-
-			//	NPC.PBO.AdrenalineLevel += 1f;
-
-			//	//if ( Time.time - NPC.LastLogTime > 1f)
-			//	//{
-
-			//	//	NPC.LastLog = new EventLog()
-			//	//	{
-			//	//		EventId    = EventIds.Gun,
-			//	//		Importance = 3,
-			//	//		NpcId      = NPC.NpcEnemy.NpcId,
-			//	//		NpcType    = NPC.NpcEnemy.Config.NpcType,
-			//	//		Timestamp  = Time.time
-			//	//	};
-
-			//	//	NPC.EventLog.Add( NPC.LastLog );
-
-			//	//	NpcEvents.BroadcastRadius(NPC,300f,EventIds.Gun,3);
-
-			//	//}
-			//}
+			
 
 		}
 		public bool ValidateItem( PhysicalBehaviour item )
@@ -375,15 +346,47 @@ namespace PPnpc
 				if (Tool && Tool.Hand && Tool.Hand.NPC != NPC ) Drop();
 				Check();
 				ResetGlobals();
+
+				if (IsHolding && ++checkGrip > 10) { CheckGrips(); checkGrip = 0;}
+
 				yield return new WaitForSeconds(1);
 			}
 
 		}
 
 
+		public void CheckGrips()
+		{
+			if (!Tool || !Tool.P || !IsPrimaryGrip) return;
+			
+			float tr         = Mathf.RoundToInt(RB.rotation + (95f * Tool.Facing));
+			Vector3 hpos     = Tool.HoldingPosition;
+			Vector3 alphaPos = GB.transform.TransformPoint(GB.GripPosition) - Tool.T.TransformPoint((Vector3)hpos);
+			float xrotate    = Mathf.Abs(Tool.R.rotation - tr );
+
+			float threshHold = AltHand.IsPrimaryGrip ? 0.1f : 0.3f;
+
+			if (xrotate > 3f || alphaPos.x > threshHold || alphaPos.y > threshHold)
+			{
+				//	weapon position is off, should reposition grip
+				Debug.Log("GRIPS rotate: " + xrotate + "   Gpos: " + alphaPos);
+				if (AltHand.Tool == Tool) AltHand.Drop();
+				GB.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
+				xxx.ToggleCollisions(Tool.transform, NPC.Head.root, false, false);
+				StartCoroutine(IResetPosition());
+			}
+			
+			 
+
+			
+			
+		}
+
 		public void Hold( Props prop )
 		{
 			if (!prop.P || !xxx.CanHold(prop.P)) return;
+
+			NPC.Actions.RecacheMoves = true;
 
 			if ((!NPC.EnhancementFirearms && prop.canShoot) ||
 				(!NPC.EnhancementMelee && prop.canStrike)){
@@ -412,7 +415,6 @@ namespace PPnpc
 			if (!LB.IsCapable || LB.GripBehaviour.isHolding) return;
 
 			if (prop.needsTwoHands && (AltHand.IsHolding || !AltHand.LB.IsCapable)) return;
-			if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " Hold(prop):" + prop.name);
 
 			Tool = prop.gameObject.GetOrAddComponent<NpcTool>() as NpcTool;
 
@@ -444,7 +446,6 @@ namespace PPnpc
 			if (prop.canStab) NPC.HasKnife        = true;
 			if ( prop.Traits["club"] ) {
 				NPC.HasClub       = true;
-				NPC.Action.StartCoroutine(NPC.Action.ISpinIdleWeapon());
 			}
 			if (prop.canExplode) NPC.HasExplosive = true;
 			if (prop.canFightFire) NPC.HasFireF   = true;
@@ -455,13 +456,14 @@ namespace PPnpc
 
 		public void Drop()
 		{
-			if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " Drop()");
-			Tool.Dropped();
+			IsPrimaryGrip = AltHand.IsPrimaryGrip = true;
+
+			if (Tool) Tool.Dropped();
 			GB.DropObject();
 			IsHolding = IsAiming = FireAtWill = false;
 
 			ResetGlobals();
-
+			NPC.Actions.RecacheMoves = true;
 		}
 
 		public void ResetGlobals()
@@ -491,6 +493,12 @@ namespace PPnpc
 			if ( Time.time < BypassCheck ) return;
 			if ( GB.isHolding )
 			{
+				if (NPC.PBO.Consciousness < 0.5f)
+				{
+					Drop();
+					GB.DropObject();
+					return;
+				}
 				if (!IsHolding) { 
 					IsHolding = true;
 					if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " Check(): mismatch");
@@ -715,9 +723,9 @@ namespace PPnpc
 			Vector2 dir;
 
 			if (delay > 0) yield return new WaitForSeconds(delay);
-			LB.Broken = uArmL.Broken = true;
+			//LB.Broken = uArmL.Broken = true;
 			do { 
-				dir = Vector2.MoveTowards(T.position, target.position, 2f * Time.fixedDeltaTime);
+				dir = Vector2.MoveTowards(T.position, target.position, 3f * Time.fixedDeltaTime);
 				RB.MovePosition(dir);
 				yield return new WaitForFixedUpdate();
 			} while (-NPC.Facing * T.position.x < -NPC.Facing * target.position.x && Vector2.Distance(T.position, target.position) > 0.3f);
@@ -742,31 +750,7 @@ namespace PPnpc
 
 		public bool IsGrabbing = false;
 
-		public IEnumerator IStab( Transform target )
-		{
-			if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " IStab()");
-			if (!target) yield break;
-
-			ConfigHandForAiming(true);
-
-			Tool.NoGhost.Add(target);
-
-			xxx.ToggleCollisions(Tool.T, target.root, true, false);
-
-			while(LB.JointStress < 0.5f)
-			{ 
-
-				RB.AddForce( (RB.transform.position - target.position).normalized * Facing * NPC.TotalWeight * Time.fixedDeltaTime * 1000f);
-
-				yield return new WaitForFixedUpdate();
-
-			}
-
-
-			ConfigHandForAiming(false);
-
-
-		}
+		
 
 		public IEnumerator IPoint( Transform target, float offsetY=0f)
 		{
@@ -780,7 +764,7 @@ namespace PPnpc
 
 			if ( Tool && Tool.P )
 			{
-				Tool.NoGhost.Add(target);
+				Tool.BGhost.Add(target, Time.time);
 
 				xxx.ToggleCollisions(Tool.T, target.root, true, false);
 
@@ -874,7 +858,6 @@ namespace PPnpc
 		public IEnumerator IResetPosition( bool noRotate=false, bool extraFlip=false )
 		{
 			if (!NPC.PBO.IsAlive()) yield break;
-			if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " IResetPosition()");
 			if (!IsHolding || Tool == null || !Tool.P) yield break;
 
 			PM3 qResp;
@@ -890,91 +873,111 @@ namespace PPnpc
 
 			NPC.PauseHold = true;
 
-			//if ( false && this == NPC.BH && NPC.FH.IsHolding && (!NPC.BH.Tool || (NPC.FH.Tool && NPC.FH.Tool == NPC.BH.Tool)) )
-			if (AltHand.IsHolding && AltHand.Tool == Tool)
+			IsPrimaryGrip = true;
+
+			bool hideAlt = false;
+			int altLayer = 9;
+
+			//AltHand.Validate();
+
+			if ( AltHand.IsHolding && AltHand.Tool != Tool )
 			{
-				if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " calling DualGrip on self");
-				NPC.PauseHold = false;
-				StartCoroutine( IDualGrip() );
+				//	Prevent weirdness when lined up Grips are activated
+				altLayer = AltHand.Tool.G.layer;
+				AltHand.Tool.gameObject.SetLayer( 2 );
+				yield return new WaitForFixedUpdate();
+				hideAlt = true;
 			}
-			else
+
+			bool ToolFlipped           = Tool.IsFlipped;
+
+
+			if (extraFlip) ToolFlipped = !ToolFlipped;
+
+			if (NPC.IsFlipped != ToolFlipped) Tool.Flip();
+			//yield return new WaitForFixedUpdate();
+
+				
+
+
+			if (Tool.props.angleHold == 0f)
 			{
+				Tool.props.angleHold = (Tool.props.holdToSide && !noRotate) ? 5.0f : 95.0f;
+				Tool.props.angleAim  = 95.0f;
+			}
 
-				bool hideAlt = false;
-				int altLayer = 9;
+			float ToolRotation = IsAiming ? Tool.props.angleAim : Tool.props.angleHold;
 
-				//AltHand.Validate();
+			ToolRotation += Tool.props.angleOffset;
 
-				if ( AltHand.IsHolding && AltHand.Tool != Tool )
+			Vector3 hpos = Tool.HoldingPosition;
+
+			Tool.T.rotation = Quaternion.Euler(0.0f, 0.0f, Tool.IsFlipped ? RB.rotation + ToolRotation : RB.rotation - ToolRotation);
+
+			Tool.T.position += GB.transform.TransformPoint(GB.GripPosition) - Tool.T.TransformPoint((Vector3)hpos);
+
+			Tool.P.MakeWeightless();
+
+			//hand.Tool.T.rotation = Quaternion.Euler( 0.0f, 0.0f, hand.Tool.IsFlipped ? hand.RB.rotation + hand.Tool.angleHold : hand.RB.rotation - hand.Tool.angleHold );
+
+			//hand.Tool.T.position += hand.GB.transform.TransformPoint( hand.GB.GripPosition ) - hand.Tool.T.TransformPoint( (Vector3)hpos );
+
+			GB.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
+
+			yield return new WaitForFixedUpdate();
+
+			Tool.T.rotation = Quaternion.Euler( 0.0f, 0.0f, Tool.IsFlipped ? RB.rotation + Tool.props.angleHold : RB.rotation - Tool.props.angleHold );
+
+
+			if ( Tool.HoldingPosition != Tool.AltHoldingPosition )
+			{
+				FixLayer();
+				// DUAL GRIP POSE
+				NpcPose gripPose = new NpcPose(NPC,"dualgrip_" + HandShortId, true);
+				float timer = Time.time + 1.0f;
+				AltHand.IsPrimaryGrip = false;
+				ConfigHandForAiming(false);
+				AltHand.ConfigHandForAiming(false);
+				NPC.PBO.DesiredWalkingDirection = 0;
+				NPC.PBO.OverridePoseIndex = -1;
+				AltHand.ConfigHandForAiming(false);
+				if ( AltHand.IsHolding )
 				{
-					//	Prevent weirdness when lined up Grips are activated
-					altLayer = AltHand.Tool.G.layer;
-					AltHand.Tool.gameObject.SetLayer( 2 );
+					AltHand.Drop();
+					yield return new WaitForEndOfFrame();
+				}
+				
+				while(Time.time < timer) { 
+					gripPose.CombineMove();
 					yield return new WaitForFixedUpdate();
-					hideAlt = true;
 				}
 
-				bool ToolFlipped           = Tool.IsFlipped;
-
-
-				if (extraFlip) ToolFlipped = !ToolFlipped;
-
-				if (NPC.IsFlipped != ToolFlipped) Tool.Flip();
-				//yield return new WaitForFixedUpdate();
-
-
-				if (Tool.props.angleHold == 0f)
-				{
-					Tool.props.angleHold = (Tool.props.holdToSide && !noRotate) ? 5.0f : 95.0f;
-					Tool.props.angleAim  = 95.0f;
-				}
-
-				float ToolRotation = IsAiming ? Tool.props.angleAim : Tool.props.angleHold;
-
-				ToolRotation += Tool.props.angleOffset;
-
-				Vector3 hpos = Tool.HoldingPosition;
-
-				Tool.T.rotation = Quaternion.Euler(0.0f, 0.0f, Tool.IsFlipped ? RB.rotation + ToolRotation : RB.rotation - ToolRotation);
-
-				Tool.T.position += GB.transform.TransformPoint(GB.GripPosition) - Tool.T.TransformPoint((Vector3)hpos);
-
-
-
-				//hand.Tool.T.rotation = Quaternion.Euler( 0.0f, 0.0f, hand.Tool.IsFlipped ? hand.RB.rotation + hand.Tool.angleHold : hand.RB.rotation - hand.Tool.angleHold );
-
-				//hand.Tool.T.position += hand.GB.transform.TransformPoint( hand.GB.GripPosition ) - hand.Tool.T.TransformPoint( (Vector3)hpos );
-
+				AltHand.Tool      = Tool; 
+				AltHand.IsHolding = true;
+				AltHand.GB.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
 				GB.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
+				Tool.T.rotation = Quaternion.Euler(0.0f, 0.0f, Tool.IsFlipped ? RB.rotation + ToolRotation : RB.rotation - ToolRotation);
+				Tool.T.position += GB.transform.TransformPoint(GB.GripPosition) - Tool.T.TransformPoint((Vector3)hpos);
+				GB.SendMessage("Use", (object)new ActivationPropagation(), SendMessageOptions.DontRequireReceiver);
+			}
 
+
+			if ( hideAlt )
+			{
 				yield return new WaitForFixedUpdate();
 
-				Tool.T.rotation = Quaternion.Euler( 0.0f, 0.0f, Tool.IsFlipped ? RB.rotation + Tool.props.angleHold : RB.rotation - Tool.props.angleHold );
+				AltHand.Tool.G.SetLayer( altLayer );
 
-				if ( hideAlt )
-				{
-					yield return new WaitForFixedUpdate();
-
-					AltHand.Tool.G.SetLayer( altLayer );
-
-					yield return new WaitForFixedUpdate();
-				}
+				yield return new WaitForFixedUpdate();
+			}
 
 
-				NPC.PauseHold = false;
+			NPC.PauseHold = false;
 
-				if ( Tool.HoldingPosition != Tool.AltHoldingPosition )
-				{
-					if ( AltHand.IsHolding )
-					{
-						AltHand.Drop();
-						yield return new WaitForEndOfFrame();
-					}
-					if (NpcMain.DEBUG_LOGGING) Debug.Log(NPC.NpcId + " " + HandId + " calling DualGrip on AltHand");
-					AltHand.Tool     = Tool; 
-					AltHand.IsHolding = true;
-					StartCoroutine( AltHand.IDualGrip() );
-				}
+			if ( Tool.HoldingPosition != Tool.AltHoldingPosition )
+			{
+					
+				//StartCoroutine( AltHand.IDualGrip() );
 			}
 
 			FixLayer();
@@ -1015,6 +1018,8 @@ namespace PPnpc
 			xxx.ToggleWallCollisions(AltHand.Tool.T);
 
 			AltHand.Tool.P.MakeWeightless();
+
+			AltHand.IsPrimaryGrip = false;
 
 
 			//if ( AltHand.Tool.P.HoldingPositions.Length == 1 )

@@ -82,7 +82,8 @@ namespace PPnpc
 			switch ( feeling )
 			{
 				case "Angry":
-					adjValue *= (Traits["Mean"]/100);
+					if (adjValue > 0) adjValue *= (Traits["Mean"]/50);
+					else adjValue *= ((100-Traits["Mean"])/50);
 					break;
 
 				case "Bored":
@@ -100,7 +101,7 @@ namespace PPnpc
 				return;
 			}
 			Feelings[feeling] += adjValue;
-
+			// if ( Feelings["Angry"] < 50 ) Feelings["Angry"] = 51;
 			ClampAll();
 		}
 	}

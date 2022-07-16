@@ -1,4 +1,4 @@
-//                             ___           ___         ___     
+	//                             ___           ___         ___     
 //  Feel free to use and      /\  \         /\  \       /\__\    
 //  modify any of this code   \:\  \       /::\  \     /:/  /    
 //                             \:\  \     /:/\:\__\   /:/  /     
@@ -15,17 +15,18 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Events;
 
 
 namespace PPnpc
 {
 	[SkipSerialisation]
-	public class NpcLimb : MonoBehaviour
+	public class NpcLimb : MonoBehaviour, Messages.IStabbed
 	{
 		public string LimbName;
 		public LimbBehaviour LB;
 		public NpcBehaviour NPC;
-		public float timeOut  = 0f;
+		public float timeOut = 0f;
 		private string lCase = "";
 		Dictionary<Collision2D, float> LodgedLimbs = new Dictionary<Collision2D, float>();
 		
@@ -43,6 +44,35 @@ namespace PPnpc
 		public void MalfuncIgnite()  => LB.PhysicalBehaviour.Ignite();
 		public void MalfuncSlice()   => LB.Slice();
 		public void MalfuncSizzle()  => LB.PhysicalBehaviour.Sizzle();
+
+		public void Stabbed(Stabbing stab)
+		{
+			if (!NPC.PBO || !NPC.PBO.IsAlive()) return;
+
+			NPC.Mojo.Feel("Fear", 2f);
+			NPC.Mojo.Feel("Angry", 1f);
+			NPC.Mojo.Feel("Bored", -20f);
+
+			if (NPC.HasGun)
+			{
+				if (NPC.FH.IsHolding) NPC.FH.FireAtWill = true;
+				if (NPC.BH.IsHolding) NPC.BH.FireAtWill = true;
+			}
+
+			if ( stab.stabber.transform.root.gameObject.TryGetComponent<NpcBehaviour>( out NpcBehaviour stabber ) )
+			{
+				if (NPC.EnhancementMemory) NPC.Memory.AddNpcStat(stabber.NpcId, "StabMe");
+				if (stabber.EnhancementMemory) stabber.Memory.AddNpcStat(NPC.NpcId, "StabThem");
+				if ( NPC.MyTargets.enemy != stabber )
+				{
+					NPC.MyTargets.enemy    = stabber;
+					NPC.Memory.LastContact = stabber;
+				}
+
+			}
+
+		} 
+		
 
 		IEnumerator IShortCircuit()
 		{
@@ -156,114 +186,87 @@ namespace PPnpc
 			Hit.HealthFinish = LB.Health;
 		}
 
-		private void OnCollisionEnter2D(Collision2D coll=null)
+
+		private void OnCollisionEnter2D( Collision2D coll = null )
 		{
-		
 			if (!NPC.PBO.IsAlive()) return;
+
 			if (coll.gameObject.layer != 9) {
 				if ( coll.gameObject.name.Contains( "wall" ) && Time.time > timeOut )
 				{
 					NPC.CancelAction = true;
-					timeOut = Time.time + 1;
 					NPC.PBO.DesiredWalkingDirection = 0;
 					return;
 				}
 			}
-			
+
+			Transform[] Ts;
+
+			if ( coll.transform == coll.transform.root )
+				Ts = new Transform[] { coll.transform };
+			else
+				Ts = new Transform[] { coll.transform, coll.transform.root };
+
+
 			lCase = coll.gameObject.name.ToLower();
 
-			if(lCase == "root") return;
-			
-			if (LB.InternalTemperature > 1000) { NPC.RunLimbs(NPC.LimbIchi); }
-
-			if (NpcGlobal.NoClip.Contains(coll.gameObject.name) || NpcGlobal.NoClipPartial.Any(lCase.Contains)) { 
+			if (NpcGlobal.NoClip.Contains(coll.gameObject.name) || 
+				NpcGlobal.NoClipPartial.Any(lCase.Contains)) { 
+				
 				if (coll.gameObject.TryGetComponent<SpriteRenderer>(out SpriteRenderer srx)) { 
 					srx.sortingLayerName = "Background";
 					srx.sortingOrder     = -10;
 				}
-				if (!NPC.NoGhost.Contains(coll.transform.root))
-					xxx.ToggleCollisions(transform, coll.transform,false, true);
+				
+				xxx.ToggleCollisions(transform, coll.transform,false, true);
 			} 
 
-			
-
-			if (lCase.Contains("debris") ) xxx.ToggleCollisions(transform, coll.gameObject.transform,false, true);
-
-			if (NPC.Action.CurrentAction == "Scavenge" && NPC.MyTargets.prop) 
+			if ( coll.transform.root.gameObject.TryGetComponent<NpcBehaviour>( out NpcBehaviour enemy ) )
 			{
-				if (++NPC.CollisionCounter > 10) {
-					NPC.ScannedPropsIgnored.Add(NPC.MyTargets.prop);
-					NPC.Action.ClearAction();
-					return;
-				}
-			}
+				float mag = coll.contacts[0].relativeVelocity.sqrMagnitude;
 
-			if (coll == null) return;
+				if (mag > 15 && enemy.DoingStrike) {
+					NPC.Memory.LastContact = enemy;
+					NPC.Memory.AddNpcStat(enemy.NpcId, "HitMe");
 
-			NpcBehaviour otherNpc;
-			otherNpc = coll.gameObject.GetComponentInParent<NpcBehaviour>();
-
-			if ( otherNpc && otherNpc != NPC )
-			{
-				
-				if (Time.time - Hit.TimeImpact > 1f)
-				{
-					Hit.TimeImpact  = Time.time;
-					Hit.Attacker    = otherNpc;
-					Hit.LimbName    = coll.gameObject.name;
-					Hit.HealthStart = LB.Health;
-					Hit.Force       = 0;
-				}
-
-				
-
-				//if( !NPC.CheckedJoints ) StartCoroutine(NPC.ICheckJoints());
-
-				LodgedLimbs[coll] = Time.time;
-
-				if ( NPC.CollideNPC( otherNpc ) )
-				{
-					float mag = coll.contacts[0].relativeVelocity.sqrMagnitude;
-				
-					if (Hit.HealthFinish != LB.Health)
-					{
-						if (NPC.EnhancementMemory) NPC.Memory.AddNpcStat(otherNpc.NpcId, "HitMe");
-						if (otherNpc.EnhancementMemory) otherNpc.Memory.AddNpcStat(NPC.NpcId, "HitThem");
-						NPC.Memory.LastContact = Hit.Attacker;
-					}
-
-					
-					if ( otherNpc.Action.CurrentAction == "FrontKick" && coll.gameObject.name == "FootFront" )
-					{
+					if ( enemy.Actions.CurrentAction == "FrontKick" && coll.gameObject.name == "FootFront" ) { 
 						if (!NPC.RunningSafeCollisions) NPC.StartCoroutine(NPC.ISafeCollisions());
-						NPC.LastHit = otherNpc.NpcId;
-
-						
 					}
+					
+					if (LB.RoughClassification == LimbBehaviour.BodyPart.Head && enemy.Facing != NPC.Facing)
+					{
+						NPC.Mojo.Feel("Angry", mag * 1.4f);
+						if ( xxx.rr( 1, 500 ) < mag )
+						{
+							//LB.CirculationBehaviour.Cut((Vector2) LB.transform.position, UnityEngine.Random.insideUnitCircle);
 
-					//if (mag > 20 && (NPC.PrimaryAction == NpcPrimaryActions.FrontKick)) {
-					//	NPC.KickLanded = Time.time; 
-					//	//ModAPI.Notify("Good Kick: " + mag);
-					//}
+							if ( LB.CirculationBehaviour.BleedingPointCount == 0 )
+							{
+								LB.CirculationBehaviour.Cut( (Vector2)coll.contacts[0].point, Vector2.down);
+								LB.CirculationBehaviour.BleedingRate = Mathf.Clamp( mag * 0.1f, 0.1f, 5f );
+								LB.CirculationBehaviour.BloodLossRateMultiplier *= 0.1f;
+								LB.CirculationBehaviour.CreateBleedingParticle((Vector2)coll.contacts[0].point, UnityEngine.Random.insideUnitCircle);
+								NPC.BloodyNose += 2;
+							} else
+							{
+								LB.CirculationBehaviour.CreateBleedingParticle((Vector2)coll.contacts[0].point, UnityEngine.Random.insideUnitCircle);
+							}
+						}
+					}
 
 					if (LB.RoughClassification == LimbBehaviour.BodyPart.Torso) { 
 
-						if (mag > 20) NPC.MyTargets.enemy = otherNpc;
-					
 						NPC.Mojo.Feel("Angry", mag * 0.4f);
 
 						foreach(NpcHand hand in NPC.Hands) { 
-							if (hand.IsHolding && xxx.rr( 1, 100 ) < mag)
+							if (mag > 1000 && xxx.rr(1,3) == 2 ) 
 							{
-
+								//ModAPI.Notify("Hit Strength: " + mag);
 								Vector2 dropForce = UnityEngine.Random.insideUnitCircle;
 								dropForce.x = Mathf.Abs(dropForce.x) * -NPC.Facing;
-								if ( hand.AltHand.GB.isHolding && hand.AltHand.GB.CurrentlyHolding == hand.GB.CurrentlyHolding )
-								{
-									hand.AltHand.Drop();
-								}
-
+								if (hand.IsHolding && hand.Tool && hand.Tool.P) hand.Tool.P.MakeWeightful();
 								hand.Drop();
+
 								NPC.TimerIgnorePickup = Time.time + 1f;
 								hand.PB.rigidbody.AddForce(dropForce * xxx.rr(5.0f,10.0f));
 							}
@@ -271,68 +274,49 @@ namespace PPnpc
 					}
 				}
 
-				//xxx.ToggleCollisions(transform,coll.transform,false,false);
-
-				//if (NPC.PeepCollisions.ContainsKey(otherNpc.NpcId) && NPC.PeepCollisions[otherNpc.NpcId] > Time.time) return;
-
-				//NPC.PeepCollisions[otherNpc.NpcId] = Time.time + 3f;
-
-				//Opinion opinion = NPC.CheckInteractions(otherNpc);
-
-				float points = 5;
-
-				if (NPC.Config.NpcType != otherNpc.Config.NpcType) {
-					points *= 1.5f;
-					NPC.Mojo.Feel("Fear", points * 0.3f);
-				}
-
-				//if (otherNpc.CurrentAct == NpcActions.Walking) points *= 0.7f;
-				if (NPC.Action.CurrentAction == "Wander") points *= 0.9f;
-
-				NPC.Mojo.Feel("Angry", points * 0.3f);
-
-				//NPC.ResetCollisions(otherNpc);
+				if (!NPC.BGhost.Keys.Intersect(Ts).Any()) xxx.ToggleCollisions(transform, enemy.transform,false, true);
+					
+				return;
 			}
-			else if ( coll.transform.root.TryGetComponent<PersonBehaviour>(out PersonBehaviour person) )
+
+			if ( coll.transform.root.gameObject.TryGetComponent<PersonBehaviour>( out PersonBehaviour person ) )
 			{
-				if (!person.IsAlive())
-				{
-					xxx.ToggleCollisions(transform, person.transform,false, true);
-					return;
-				} else
-				{
-					if (!NPC.NoGhost.Contains(coll.transform.root) && coll.contacts[0].relativeVelocity.magnitude > 2f )
-					{
-						xxx.ToggleCollisions(transform, person.transform,false, true);
-						return;
-					}
-				}
+				xxx.ToggleCollisions(transform, coll.transform,false, true);
+				return;
 			}
-			else
+
+			//if ( coll.gameObject.TryGetComponent<NpcTool>( out NpcTool tool ) )
+			//{
+			//	if (tool.BGhost.Keys.Intersect(Ts).Any()) return;
+			//}
+			if ( coll.gameObject.TryGetComponent<Props>( out Props prop ) )
 			{
-				if ( coll.gameObject.TryGetComponent<Props>( out Props prop ) )
+				if (NPC.BGhost.Keys.Intersect(Ts).Any())  return; 
+
+				if ( prop.NoGhost ) return;
+
+				if ((NPC.Action.CurrentAction == "Scavenge" || NPC.Action.CurrentAction == "GearUp" || NPC.Action.CurrentAction == "Wander" || NPC.ArsenalTimer > Time.time) )
 				{
-					if ( prop.NoGhost ) return;
-					if ((NPC.Action.CurrentAction == "Scavenge" || NPC.Action.CurrentAction == "GearUp" || NPC.Action.CurrentAction == "Wander" || NPC.ArsenalTimer > Time.time) )
-					{
-						if (prop.canUpgrade) {
-							if (LB.RoughClassification == LimbBehaviour.BodyPart.Head) return;
-							xxx.ToggleCollisions(transform, prop.P.transform,false, false);
-						}
-
-						if (Time.time > NPC.TimerIgnorePickup) NPC.OpenHand.Hold( prop );
-						xxx.ToggleCollisions(transform, prop.P.transform,false, true);
+					if (prop.canUpgrade) {
+						if (LB.RoughClassification == LimbBehaviour.BodyPart.Head) return;
+						xxx.ToggleCollisions(transform, prop.P.transform,false, false);
 					}
 
-					if ( LB.RoughClassification == LimbBehaviour.BodyPart.Head && NPC.AIMethod == AIMethods.AIChip )
-					{
-						//	got clocked in the head and has a chip
-						if ( coll.contacts[0].relativeVelocity.magnitude > 10f ) StartCoroutine( "IShortCircuit" );
-					}
+					if (Time.time > NPC.TimerIgnorePickup) NPC.OpenHand.Hold( prop );
+				}
+				xxx.ToggleCollisions(transform, prop.P.transform,false, true);
+
+				if ( LB.RoughClassification == LimbBehaviour.BodyPart.Head  )
+				{
+
+					//	got clocked in the head and has a chip
+					if ( NPC.AIMethod == AIMethods.AIChip && coll.contacts[0].relativeVelocity.magnitude > 20f ) StartCoroutine( "IShortCircuit" );
 				}
 			}
 		}
 
+
+		
 		
 	}
 }

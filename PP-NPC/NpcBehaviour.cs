@@ -21,20 +21,27 @@ using UnityEngine.Events;
 namespace PPnpc
 {
 	[SkipSerialisation]
-	public class NpcBehaviour : MonoBehaviour, Messages.IStabbed, Messages.IShot, Messages.IDamage
+	public class NpcBehaviour : MonoBehaviour, Messages.IShot
 	{
 
 		public static bool GlobalShowStats = false;
 
 		public LightSprite RebirthLight;
 		
-		public bool DisableFlip   = false;
+		public bool _disableFlip   = false;
 		public NpcConfig Config   = new NpcConfig();
 		private bool _haltAction  = false;
 		public float ArsenalTimer = 0;
 		public bool ShowingStats  = false;
 		public bool InRebirth     = false;
-		public bool ShowStats     = true;
+		public bool ShowStats     = false;
+		public bool NoFight       = false;
+		public bool NoShoot       = false;
+		public bool NoEntry       = false;
+		public bool InHealZone    = false;
+		public bool DoingStrike   = false;
+
+		public int BloodyNose     = 0;
 
 		public NpcHoverStats HoverStats;
 
@@ -46,6 +53,8 @@ namespace PPnpc
 			set { _haltAction = value; }
 		}
 
+		public Color ChatColor;
+
 		public PersonBehaviour PBO;
 		public int NpcId;
 
@@ -56,12 +65,17 @@ namespace PPnpc
 		public NpcBehaviour NpcEnemy;
 		public NpcMojo Mojo;
 		public NpcAction Action;
+		public NpcActions Actions;
 		public NpcMemory Memory;
+
+		public Collider2D[] MyColliders;
 
 		public NpcGoals Goals;
 
 		public int LastHit	= 0;
 		public int LastShot = 0;
+		public float LastSmack = 0f;
+		public float NoFlipTimeout = 0f;
 
 		public List<Transform> NoGhost = new List<Transform>();
 
@@ -111,6 +125,19 @@ namespace PPnpc
 
 		public float MyBlood       = 0f;
 		private float _threatLevel = 1f;
+
+		public bool DisableFlip
+		{
+			get { 
+				if (_disableFlip && Time.time > NoFlipTimeout) _disableFlip = false;
+				return _disableFlip; 
+			}
+			set { 
+				_disableFlip = value; 
+				if (value) NoFlipTimeout = Time.time + 10f;
+			}
+		}
+
 
 		public float TimerIgnorePickup = 0;
 
@@ -187,34 +214,31 @@ namespace PPnpc
 			set { 
 				if (value && !_EKarate && HoverStats) HoverStats.AddIcon(IconTypes.Upgrade,2);
 				_EKarate = value; 
-
+				if (Actions) Actions.RecacheMoves = true;
 			}
 		}
 		public bool EnhancementFirearms { get { return _EFirearms; } 
 			set { 
 				if (value && !_EFirearms && HoverStats) HoverStats.AddIcon(IconTypes.Upgrade,1);
 				_EFirearms = value; 
-
+				if (Actions) Actions.RecacheMoves = true;
 				ScannedPropsIgnored.Clear();
 				ScannedThingsIgnored.Clear();
-
 			}
 		}
 		public bool EnhancementMelee    { get { return _EMelee; } 
 			set { 
 				if (value && !_EMelee && HoverStats) HoverStats.AddIcon(IconTypes.Upgrade,3);
 				_EMelee = value; 
-
+				if (Actions) Actions.RecacheMoves = true;
 				ScannedPropsIgnored.Clear();
 				ScannedThingsIgnored.Clear();
-
 			}
 		}
 		public bool EnhancementMemory   { get { return _EMemory; } 
 			set { 
 				if (value && !_EMemory && HoverStats) HoverStats.AddIcon(IconTypes.Upgrade,0);
 				_EMemory = value; 
-
 			}
 		}
 
@@ -269,6 +293,7 @@ namespace PPnpc
             }
         }
 
+		public Dictionary<Transform, float> BGhost = new Dictionary<Transform, float>();
 
 		public List<StatsIcon> Icons = new List<StatsIcon>();
 
@@ -278,9 +303,9 @@ namespace PPnpc
 
 		public static string[] DontNotify = { "Wait", "Wander", "Thinking", "FrontKick", "SoccerKick", };
 
-		public static string[] CanAttackActions = { "Wait", "Thinking", "Shoot", "Survive", "Fight", "Defend", };
+		public static string[] CanAttackActions = { "Wait", "Thinking", "Shoot", "Survive", "Fight", "Defend", "Wander", "Attack" };
 
-		public static string[] AttackActions = { "Fight", "Shoot", "FrontKick", "SoccerKick", "Tackle", "Shove", "Caveman", "Club"};
+		public static string[] AttackActions = { "Fight", "Shoot", "FrontKick", "SoccerKick", "Tackle", "Shove", "Caveman", "Club", "Attack"};
 
 		public float LastTimeShot = 0f;
 
@@ -345,6 +370,13 @@ namespace PPnpc
 		}
 
 		public bool IsAlive			                    => HeadL && HeadL.IsConsideredAlive;
+		public bool CanWalk								=> PBO && PBO.IsTouchingFloor && PBO.IsAlive() 
+														&& !PBO.Braindead && PBO.Consciousness == 1 
+														&& !LB["Foot"].Broken && !LB["FootFront"].Broken
+														&& !LB["LowerLeg"].Broken && !LB["LowerLegFront"].Broken
+														&& !LB["UpperLeg"].Broken && !LB["UpperLegFront"].Broken
+														&& LB["Foot"].IsCapable && LB["FootFront"].IsCapable
+														&& LB["LowerLeg"].IsCapable && LB["LowerLegFront"].IsCapable;
 		public bool FacingToward( NpcBehaviour npc )	=> npc && npc.Head && FacingToward(npc.Head.position.x);
 		public bool FacingToward( Vector2 pos )			=> FacingToward( pos.x );
 		public bool FacingToward( float posX )			=> ( ( posX * Facing < Head.position.x * Facing ) );
@@ -365,7 +397,6 @@ namespace PPnpc
 		public void Update()
 		{
 			//if (Input.GetKeyDown(KeyCode.K)) ResetLimbs();
-
 			if (FireProof)
 			{
 				PBO.PainLevel       = 0.0f;
@@ -374,14 +405,14 @@ namespace PPnpc
 			}
 			if (NpcMain.DEBUG_DRAW) ModAPI.Draw.Rect(ScanStart,ScanStop);
 
-			if (GetUp) {
-				GetUp = false;
-				if (HurtLevel <= 3) RunLimbs(LimbUp,1.5f);
-				if (!GetUp)
-				{
-					PBO.LinkedPoses[PoseState.Rest].ShouldStumble = true;
-				}
-			} 
+			//if (GetUp) {
+			//	GetUp = false;
+			//	if (HurtLevel <= 3) RunLimbs(LimbUp,1.5f);
+			//	if (!GetUp)
+			//	{
+			//		PBO.LinkedPoses[PoseState.Rest].ShouldStumble = true;
+			//	}
+			//} 
 		}
 
 
@@ -407,7 +438,7 @@ namespace PPnpc
 				if (FH.IsAiming) {FH.IsAiming = false; FH.FireAtWill = false;}
 				if (BH.IsAiming) {BH.IsAiming = false; BH.FireAtWill = false;}
 
-				if (xxx.rr(1,5) == 3 && IsUpright) Action.CurrentAction = "Wander";
+				if (xxx.rr(1,5) == 3 && CanWalk) Action.CurrentAction = "Wander";
 			}
 
 			if (Action.PCR != null) Action.StopCoroutine(Action.PCR);
@@ -450,7 +481,7 @@ namespace PPnpc
 			if (Goals.Upgrade) SvUpgrade();
 			if (EnhancementFirearms ) SvShoot();
 			if (EnhancementKarate) SvKarate();
-			if (EnhancementMelee && HasKnife || HasClub) SvAttackMelee();
+			if (EnhancementMelee && HasKnife || HasClub || HasSword) SvAttackMelee();
 			//if (EnhancementMelee && HasKnife) SvAttackKnife();
 
 			
@@ -459,8 +490,8 @@ namespace PPnpc
 			SvCheckForEvents();
 			SvCheckEnvironment();
 			if (EnhancementTroll) { 
-				if (Mojo.Feelings["Angry"] > 50 ) SvCheckTroll();
-				else SvCheckWitness();
+				SvCheckTroll();
+				SvCheckWitness();
 			}
 			//SvCheckRandomScan();
 
@@ -471,8 +502,24 @@ namespace PPnpc
 				
 		}
 
+		public float WallDistance = 0f;
+
 		public void ScanAhead( float distance=10f )
 		{
+			foreach ( SignPost signPost in NpcGlobal.SignPosts )
+			{
+				if ( signPost.SignType == Gadgets.NoEntrySign )
+				{
+					if (Head.position.x > signPost.xStart && 
+						Head.position.x < signPost.xEnd)
+					{
+						Action.CurrentAction = "Leaving area";
+						if (!FacingToward(signPost.Sign.position)) Flip();
+						StartCoroutine(Actions.ISubWalkTo(signPost.Sign, 0.2f, 0.3f));
+					}
+				}
+			}
+
 			if (Time.time > ScanTimeExpires) {
 
 				ScanTimeExpires = Time.time + ScanInterval;
@@ -509,7 +556,10 @@ namespace PPnpc
 				for(int i = -1; ++i < ScanResultsCount;) {
 
 					if (ScanResults[i].gameObject.name == "root") continue;
-					if (ScanResults[i].gameObject.name.Contains("wall")) ScannedWall = true;
+					if (ScanResults[i].gameObject.name.Contains("wall")) {
+						ScannedWall  = true;
+						WallDistance = Mathf.Abs(Head.position.x - ScanResults[i].gameObject.transform.position.x);
+					}
 					px = null;
 					GameObject groot = ScanResults[i].transform.root.gameObject;
 
@@ -519,6 +569,7 @@ namespace PPnpc
 						if ( groot.TryGetComponent<NpcBehaviour>( out NpcBehaviour npc ) )
 						{
 							if (npc == this || TimedNpcIgnored.Values.Contains(npc) || ScannedNpcIgnored.Contains(npc) || ScannedNpc.Contains(npc)) continue;
+
 							ScannedNpc.Add(npc);
 						}
 						else if ( groot.TryGetComponent<PersonBehaviour>( out PersonBehaviour person ) )
@@ -583,120 +634,45 @@ namespace PPnpc
 		public void SvLastContact()
 		{
 			if ( !Memory.LastContact || !Memory.LastContact.PBO.IsAlive() ) return;
-			bool noShoot = false;
-			bool noFight = false;
 
-			foreach ( SignPost signPost in NpcGlobal.SignPosts )
+			if (IsUpright && !NoFight && !Memory.LastContact.NoFight) { 
+				Action.NPCTargets["LastAttack"] = Memory.LastContact;
+				Action.Weights["LastAttack"] = xxx.rr(1,10);
+			}
+
+			if (HasGun && !NoFight && !NoShoot && !Memory.LastContact.NoFight && !Memory.LastContact.NoShoot )
 			{
-				if ( signPost.SignType == Gadgets.NoFightSign )
-					if (Memory.LastContact.Head.position.x > signPost.xStart && 
-						Memory.LastContact.Head.position.x < signPost.xEnd) noFight = true;
-
-				else if ( signPost.SignType == Gadgets.NoGunSign )
-					if (Memory.LastContact.Head.position.x > signPost.xStart && 
-							Memory.LastContact.Head.position.x < signPost.xEnd) noShoot = true;
-			}
-			float score = 0;
-			if (IsUpright) { 
-				if (Memory.LastContact.Head.position.y < LB["UpperLeg"].transform.position.y)
-				{
-					
-					//	Soccer Kick
-					if (!noFight && NpcBehaviour.DefenseActions.Contains(Memory.LastContact.Action.CurrentAction))
-					{
-						score = 3;
-						if (Memory.LastContact.FacingToward(Head.position.x))
-						{
-							score = xxx.rr(1,10);
-						}
-						else { 
-							score = xxx.rr(1,5);
-						}
-
-						score += (Mojo.Feelings["Angry"] / 100);
-					}
-
-					if (score > 0 ){
-						Action.Weights["SoccerKick"]    = score;
-						Action.NPCTargets["SoccerKick"] = Memory.LastContact;
-					}
-				} 
-				else
-				{
-					//	Front Kick
-					if (!noFight && NpcBehaviour.DefenseActions.Contains(Memory.LastContact.Action.CurrentAction))
-					{
-						score = 3;
-						if (Memory.LastContact.FacingToward(Head.position.x))
-						{
-							score = xxx.rr(1,10);
-						}
-						else score = xxx.rr(1,5);
-
-						score += (Mojo.Feelings["Angry"] / 100);
-					}
-
-					if (score > 0 ){
-						Action.Weights["FrontKick"] = score;
-						Action.NPCTargets ["FrontKick"] = Memory.LastContact;
-					}
-				}
+				Action.NPCTargets["LastShoot"] = Memory.LastContact;
+				Action.Weights["LastShoot"]    = xxx.rr(1,10);
 			}
 
-			if (!noFight && !noShoot && HasGun)
-			{
-				Action.NPCTargets["Shoot"] = Memory.LastContact;
-				Action.Weights["Shoot"] = xxx.rr(1,10);
-			}
-
-			if (!noFight && HasClub )
-			{
-				Action.NPCTargets["Club"] = Memory.LastContact;
-				Action.Weights["Club"] = xxx.rr(1,10);
-			}
-
-
-			//Action.Weights["SoccerKick"] *= xxx.rr(2f,3f);
-			//Action.Weights["FrontKick"] *= xxx.rr(2f,3f);
-			//Action.Weights["Shoot"] *= xxx.rr(2f,3f);
 		}
 		
 		
 		
 		public void SvAttackMelee()
 		{
-
-			if (!FH.IsHolding && !BH.IsHolding) return;
-
+			if (NoFight) return;
 			if (OnFeet()) 
 			{ 
-				Action.Weights["Attack"] = 0;
-				float distance         = float.MaxValue;
-				float temp;
+				float distance  = float.MaxValue;
 				bool haveTarget = false;
-				bool Skip = false;
+				float temp;
 
 				foreach ( NpcBehaviour npc in ScannedNpc )
 				{
-					
-					if (!npc || !npc.PBO ) continue;
-					Skip = false;
-					foreach ( SignPost signPost in NpcGlobal.SignPosts )
-					{
-						if ( signPost.SignType == Gadgets.NoFightSign )
-							if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) {  Skip = true; break; }
-					}
-					if (Skip) continue;
+					if (!npc || !npc.PBO || npc.NoFight ) continue;
 					
 					if (Mathf.Abs(Head.position.y - npc.Head.position.y) > 0.4f) continue;
+					
 					temp = Mathf.Abs(Head.position.x - npc.Head.position.x);
+
 
 					if ( CanAttackActions.Contains( npc.Action.CurrentAction ) && temp < distance )
 					{
 						distance = temp;
-
 						haveTarget = true;
-						Action.NPCTargets ["Attack"] = npc;
+						Action.NPCTargets["Attack"] = npc;
 					}
 
 				}
@@ -706,57 +682,10 @@ namespace PPnpc
 
 			return;
 
-
-
 		}
 
 
-		public void SvAttackKnife()
-		{
-
-			if (!FH.IsHolding && !BH.IsHolding) return;
-
-			if (OnFeet()) 
-			{ 
-				Action.Weights["Knife"] = 0;
-				float distance         = float.MaxValue;
-				float temp;
-				bool haveTarget = false;
-				bool Skip = false;
-
-				foreach ( NpcBehaviour npc in ScannedNpc )
-				{
-					
-					if (!npc || !npc.PBO ) continue;
-					Skip = false;
-					foreach ( SignPost signPost in NpcGlobal.SignPosts )
-					{
-						if ( signPost.SignType == Gadgets.NoFightSign )
-							if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) {  Skip = true; break; }
-					}
-					if (Skip) continue;
-					
-					if (Mathf.Abs(Head.position.y - npc.Head.position.y) > 0.4f) continue;
-					temp = Mathf.Abs(Head.position.x - npc.Head.position.x);
-
-					if ( CanAttackActions.Contains( npc.Action.CurrentAction ) && temp < distance )
-					{
-						distance = temp;
-
-						haveTarget = true;
-						Action.NPCTargets ["Knife"] = npc;
-					}
-
-				}
-
-				if (haveTarget) Action.Weights["Knife"] = xxx.rr(5,10);
-			}
-
-			return;
-
-
-
-		}
+		
 
 
 
@@ -824,7 +753,7 @@ namespace PPnpc
 		}
 
 		// ────────────────────────────────────────────────────────────────────────────
-		//   :::::: NPC Scavenge
+		//   :::::: NPC GEAR UP
 		// ────────────────────────────────────────────────────────────────────────────
 		public void SvGearUp()
 		{
@@ -887,6 +816,7 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		public void SvRecruit()
 		{
+			if ( LB["Head"].IsAndroid ) return;
 			if ( ScannedPeople.Count > 0 ) 
 			{
 				float baseScore = 0;
@@ -977,6 +907,7 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		public void SvFidget()
 		{
+			if ( LB["Head"].IsAndroid ) return;
 			if ( xxx.rr( 1, 200 ) < Mojo.Feelings["Bored"] )
 			{
 				if (NpcMain.DEBUG_LOGGING) Debug.Log(NpcId + "[scan]: Fidget()");
@@ -1026,44 +957,27 @@ namespace PPnpc
 
 				}
 			}
-
 		}
-
-
-
 		
 
 		// ────────────────────────────────────────────────────────────────────────────
 		//   :::::: NPC KARATE COMBAT
 		// ────────────────────────────────────────────────────────────────────────────
-		public bool SvKarate()
+		public void SvKarate()
 		{
-
-			bool Skip = false;
+			if (NoFight) return;
 			if (OnFeet()) 
 			{ 
-				float score = 0;
+				float score		= 0;
+				float highScore = 0;
+
 				foreach ( NpcBehaviour npc in ScannedNpc )
 				{
-					if (!npc || !npc.PBO) continue;
-
-					Skip = false;
-					foreach ( SignPost signPost in NpcGlobal.SignPosts )
-					{
-						if ( signPost.SignType == Gadgets.NoFightSign )
-							if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) {  Skip = true; break; }
-					}
-
-
-
-					if (Skip) {
-						continue;
-
-					}
+					if (!npc || !npc.PBO || npc.NoFight) continue;
 
 					if (MyGroup.Contains(npc)) continue;
 
-					if (Memory.Opinion(npc.NpcId) <= 0) continue;
+					if (Memory.Opinion(npc.NpcId) <= 5) continue;
 
 					score = 7;
 
@@ -1077,50 +991,22 @@ namespace PPnpc
 					{
 						if (CanAttackActions.Contains(npc.Action.CurrentAction) )
 						{
-							if (npc.Head.position.y < LB["UpperLeg"].transform.position.y)
-							{
-								//	Soccer Kick
-								if (NpcBehaviour.DefenseActions.Contains(npc.Action.CurrentAction))
-								{
-									if (npc.FacingToward(Head.position.x))
-									{
-										if (xxx.rr(1,100) > Mojo.Traits["Brave"]) continue;
-									}
-									else if (xxx.rr(1,120) > Mojo.Feelings["Angry"] + Mojo.Traits["Mean"]) continue;
+							if (xxx.rr(1,100) > Mojo.Traits["Brave"]) continue;
+							if (xxx.rr(1,120) > Mojo.Feelings["Angry"] + Mojo.Traits["Mean"]) continue;
 
-									score += (Mojo.Feelings["Angry"] / 100);
-								}
+							score += (Mojo.Feelings["Angry"] / 100);
 
-								if (Action.Weights["SoccerKick"] < score) {
-									Action.Weights["SoccerKick"]  = score;
-									Action.NPCTargets["SoccerKick"] = npc;
-								}
-							} 
-							else
-							{
-								//	Front Kick
-								if (NpcBehaviour.DefenseActions.Contains(npc.Action.CurrentAction))
-								{
-									if (npc.FacingToward(Head.position.x))
-									{
-										if (xxx.rr(1,100) > Mojo.Traits["Brave"]) continue;
-									}
-									else if (xxx.rr(1,200) > Mojo.Feelings["Angry"] + Mojo.Traits["Mean"]) continue;
+							score += Memory.Opinion(npc.NpcId);
 
-									score += (Mojo.Feelings["Angry"] / 100);
-								}
-
-								if ( Action.Weights["FrontKick"] < score) {
-									Action.Weights["FrontKick"] = score;
-									Action.NPCTargets ["FrontKick"] = npc;
-								}
+							if (score > highScore) { 
+								Action.Weights["Karate"]	= score;
+								Action.NPCTargets["Karate"] = npc;
+								highScore = score;
 							}
 						}
 					}
 				}
 			}
-
-			return false;
 		}
 
 
@@ -1129,6 +1015,8 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		public void SvCheckTroll()
 		{
+			if ( LB["Head"].IsAndroid ) return;
+			if (NoFight) return;
 			if (OnFeet() && HurtLevel < 7) 
 			{ 
 				if (FH.IsHolding && BH.IsHolding && FH.Tool.props == BH.Tool.props) return;
@@ -1149,7 +1037,7 @@ namespace PPnpc
 					{ 
 						score += 1;
 
-						score += Memory.Opinion(npc.NpcId);
+						score += Math.Abs(Memory.Opinion(npc.NpcId));
 
 						if (ThreatLevel < npc.ThreatLevel) score -= 1;
 						if (npc.HasGun) score -= 1;
@@ -1177,8 +1065,14 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		public void SvCheckWitness()
 		{
-			if (FH.IsHolding && BH.IsHolding && FH.Tool.props == BH.Tool.props) return;
+			if ( LB["Head"].IsAndroid ) return;
 			float bestScore = 0;
+			bool hated = false;
+			foreach ( NpcBehaviour npc in ScannedNpc )
+			{
+				if (Memory.LastContact && npc == Memory.LastContact) hated = true;
+			}
+
 			foreach ( NpcBehaviour npc in ScannedNpc )
 			{
 				if (!npc || !npc.PBO ) continue;
@@ -1187,13 +1081,23 @@ namespace PPnpc
 				
 				float distance = Mathf.Abs(Head.position.x - npc.Head.position.x);
 
-				if (distance < 5f && distance > 1f && AttackActions.Contains(npc.Action.CurrentAction) && npc.PBO.OverridePoseIndex > 5)
+				//	Watch a fight
+				if (!hated && Mojo.Feelings["Angry"] < 60 && npc.Actions.CurrentAction == "Attack" && Mathf.Abs(npc.Head.position.x - Head.position.x) < 4f)
+				{
+
+					if (npc.MyTargets.enemy != this) {
+						Action.Weights["WatchFight"]    = Mojo.Feelings["Bored"] * xxx.rr(0.1f, 0.8f);
+						Action.NPCTargets["WatchFight"] = npc;
+					}
+				}
+
+				if (distance < 5f && distance > 1f && npc.Actions.DoingStrike)
 				{ 
 					//	Dont witness own ass kicking
-					if (npc.MyTargets.enemy && npc.MyTargets.enemy == this) continue;
+					//if (npc.MyTargets.enemy && npc.MyTargets.enemy == this) continue;
 					score += 1;
 
-					score += Memory.Opinion(npc.NpcId);
+					score += Mathf.Abs(Memory.Opinion(npc.NpcId));
 
 					if (score > bestScore)
 					{
@@ -1214,50 +1118,63 @@ namespace PPnpc
 		// ────────────────────────────────────────────────────────────────────────────
 		//   :::::: NPC SHOOT
 		// ────────────────────────────────────────────────────────────────────────────
-		public bool SvShoot()
+		public void SvShoot()
 		{
+			if (NoFight || NoShoot || !HasGun) return;
 			float distance           = float.MaxValue;
 			float temp	             = 0;
 			float threat             = -100;
 			Vector3 position         = Head.position;
 			NpcBehaviour selectedNpc = (NpcBehaviour)null;
 
-			if (!HasGun) return false;
-
 			//	Either by distance or by threat
 			int mode = xxx.rr(1,5);
 
 			selectedNpc = null;
 
-			foreach ( SignPost signPost in NpcGlobal.SignPosts )
-			{
-				if ( signPost.SignType == Gadgets.NoGunSign )
-					if (Head.position.x > signPost.xStart && Head.position.x < signPost.xEnd) {  return false; }
-
-				if ( signPost.SignType == Gadgets.NoFightSign )
-					if (Head.position.x > signPost.xStart && Head.position.x < signPost.xEnd) {  return false; }
-			}
-
 			foreach ( NpcBehaviour npc in ScannedNpc )
 			{
-				if (!npc || !npc.PBO) continue;
+				if (!npc || !npc.PBO || npc.NoFight || npc.NoShoot) continue;
 
 				if (MyGroup.Contains(npc)) continue;
 
 				if (npc.TeamId > 0 && npc.TeamId == TeamId) continue;
 
-				if (Memory.Opinion(npc.NpcId) <= 0) continue;
-
-				bool Skip = false;
-				foreach ( SignPost signPost in NpcGlobal.SignPosts )
+				float dist = float.MaxValue;
+				float tmpdist;
+				float spooked = 0;
+				if (npc.FacingToward(this) && npc.PBO.DesiredWalkingDirection > 1)
 				{
-					if ( signPost.SignType == Gadgets.NoGunSign )
-						if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) {  Skip = true; break; }
+					spooked += 3;
+					//  npc is walking towards me
+					if (npc.HasGun) spooked += 10;
+					if (npc.HasKnife) spooked += 5;
+					if (npc.HasClub) spooked += 5;
+					if (Memory.Opinion(npc.NpcId) > 1) spooked += Memory.Opinion(npc.NpcId);
+					if (npc.ThreatLevel > ThreatLevel) spooked += npc.ThreatLevel - ThreatLevel;
+					if (HurtLevel > 0) spooked += HurtLevel;
 
-					if ( signPost.SignType == Gadgets.NoFightSign )
-						if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) {  Skip = true; break; }
+					tmpdist = Mathf.Abs(npc.Head.position.x - Head.position.x);
+					if (tmpdist < dist)
+					{
+						dist = tmpdist;
+						Action.NPCTargets["Shoot"] = npc;
+					}
 				}
-				if (Skip) continue;
+
+				if ( xxx.rr( 1, 20 ) < spooked )
+				{
+					if (xxx.rr(1,100) < Mojo.Feelings["Angry"] )
+					{
+						Action.Weights["Shoot"] = 10;
+					} else
+					{
+						Action.Weights["Warn"]    = 10;
+						Action.NPCTargets["Warn"] = npc;
+					}
+				}
+
+				if (Memory.Opinion(npc.NpcId) <= 0) continue;
 
 				if (mode == 1) { 
 
@@ -1289,13 +1206,9 @@ namespace PPnpc
 			{
 				Action.NPCTargets["Shoot"] = selectedNpc;
 
-
-				Action.Weights["Shoot"] = 5;
-
-				return true;
+				Action.Weights["Shoot"] = xxx.rr(1,15);
 			}
 
-			return false;
 
 		}
 
@@ -1307,33 +1220,20 @@ namespace PPnpc
 		{
 			float distance;
 
-			float tooManyPeople = ScannedNpc.Count() - Mathf.Clamp(Mojo.Traits["Shy"] / 10, 3, 15);
+			//float tooManyPeople = ScannedNpc.Count() - Mathf.Clamp(Mojo.Traits["Shy"] / 10, 3, 15);
 
-			if (tooManyPeople > 0 && xxx.rr(1,tooManyPeople * 2) > 1)
-			{
-				Action.Weights["Flee"] = 50;
-			}
-
-			bool noShoot = false;
-			bool noFight = false;
+			//if (tooManyPeople > 0 && xxx.rr(1,tooManyPeople * 2) > 1)
+			//{
+			//	Action.Weights["Flee"] = xxx.rr(1,3);
+			//}
 
 			foreach ( NpcBehaviour npc in ScannedNpc )
 			{
 				if (!npc || !npc.PBO) continue;
 
-				noShoot = noFight = false;
-				foreach ( SignPost signPost in NpcGlobal.SignPosts )
-				{
-					if ( signPost.SignType == Gadgets.NoFightSign )
-						if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) noFight = true;
-
-					else if ( signPost.SignType == Gadgets.NoGunSign )
-						if (npc.Head.position.x > signPost.xStart && npc.Head.position.x < signPost.xEnd) noShoot = true;
-				}
-
 				distance = Mathf.Abs(Head.position.x - npc.Head.position.x);
 
-				if (distance < 1f && "WaitThinking".Contains(npc.Action.CurrentAction))
+				if (distance < 1f )
 				{
 					if (EnhancementMemory)
 					{
@@ -1344,41 +1244,88 @@ namespace PPnpc
 						if ( EnhancementTroll && xxx.rr( 1, 100 ) > Mojo.Feelings["Angry"] )
 						{
 							// dont say move if actively engaged
-							if (Memory.LastContact != npc) SayRandom("move");	
+							if (Memory.LastContact != npc) {
+								SayRandom("move");	
+								if (xxx.rr(1,8) < 4) Memory.LastContact = npc;
+							}
 						}
 
-						if ( !noFight && xxx.rr( 1, 100 ) <= Mojo.Feelings["Angry"] )
+						if ( !NoFight && xxx.rr( 1, 100 ) <= Mojo.Feelings["Angry"] )
 						{
 							Action.Weights["Shove"]      = xxx.rr(3,20);
 							Action.NPCTargets["Shove"]	  = npc;
 						}
-						Action.Weights["Wander"] = xxx.rr(1,10);
 
+						if (CanWalk) Action.Weights["Wander"] = xxx.rr(1,10);
 					} else
 					{
 						Mojo.Feelings["Angry"]++;
 						if ( EnhancementTroll && xxx.rr( 1, 100 ) > Mojo.Feelings["Angry"] )
 						{
-							SayRandom("move");	
+							SayRandom("move");
+							if (xxx.rr(1,10) < 4) Memory.LastContact = npc;
 						}
-						if ( !noFight && xxx.rr( 1, 100 ) <= Mojo.Feelings["Angry"] )
+						if ( !NoFight && xxx.rr( 1, 100 ) <= Mojo.Feelings["Angry"] )
 						{
 							Action.Weights["Shove"]      = xxx.rr(3,20);
 							Action.NPCTargets["Shove"]	  = npc;
 						}
-						Action.Weights["Wander"] = xxx.rr(1,10);
+						if (CanWalk) Action.Weights["Wander"] = xxx.rr(1,3);
 					}
 				}
 
-				if ( !noFight && EnhancementKarate && Time.time > LastCaveman && HurtLevel < 3 && IsUpright &&
-					distance < 2  && 
-					Facing == npc.Facing && 
-					npc.Head.position.y < RB["Head"].position.y &&
-					npc.Head.position.y > RB["LowerBody"].position.y )
+				else
+				{
+					if ( HasGun )
 					{
-						Action.Weights["Caveman"]      += Memory.Opinion(npc.NpcId) + xxx.rr(1,10);
-						Action.NPCTargets["Caveman"]	= npc;
+						float dist = float.MaxValue;
+						float tmpdist;
+						float spooked = 0;
+						if (npc.FacingToward(this) && npc.PBO.DesiredWalkingDirection > 1)
+						{
+							spooked += 3;
+							//  npc is walking towards me
+							if (npc.HasGun) spooked += 10;
+							if (npc.HasKnife) spooked += 5;
+							if (npc.HasClub) spooked += 5;
+							if (Memory.Opinion(npc.NpcId) > 1) spooked += Memory.Opinion(npc.NpcId);
+							if (npc.ThreatLevel > ThreatLevel) spooked += npc.ThreatLevel - ThreatLevel;
+							if (HurtLevel > 0) spooked += HurtLevel;
+
+							tmpdist = Mathf.Abs(npc.Head.position.x - Head.position.x);
+							if (tmpdist < dist)
+							{
+								dist = tmpdist;
+								Action.NPCTargets["Shoot"] = npc;
+							}
+						}
+
+						if ( xxx.rr( 1, 100 ) < spooked )
+						{
+							if (xxx.rr(1,100) < Mojo.Feelings["Angry"] )
+							{
+								Action.Weights["Shoot"] = 10;
+							} else
+							{
+								Action.Weights["Warn"]    = 10;
+								Action.NPCTargets["Warn"] = npc;
+							}
+						}
+
+					}
+					
+
 				}
+
+				//if ( !NoFight && EnhancementKarate && HurtLevel < 3 && IsUpright &&
+				//	distance < 2  && 
+				//	Facing == npc.Facing && 
+				//	npc.Head.position.y < RB["Head"].position.y &&
+				//	npc.Head.position.y > RB["LowerBody"].position.y )
+				//	{
+				//		Action.Weights["Caveman"]      += xxx.rr(1,10);
+				//		Action.NPCTargets["Caveman"]	= npc;
+				//}
                 
 
 				if (npc.HasGun)
@@ -1403,7 +1350,7 @@ namespace PPnpc
 						}
 						else
 						{
-							if (!noFight && !noShoot && HasGun) {
+							if (!NoFight && !NoShoot && HasGun) {
 								Action.Weights["Fight"]    += xxx.rr(1,10);
 								Action.NPCTargets["Fight"]	= npc;
 								Action.ItemTargets["Fight"]	= gun;
@@ -1418,67 +1365,18 @@ namespace PPnpc
 						}
 					}
 
-					else
+					else if (!gun)
                     {
 						//	has gun but not aiming at me
 						
+						Action.Weights["Caveman"]      += xxx.rr(1,10);
+						Action.NPCTargets["Caveman"]	= npc;
 						
                     }
 				}
 			}
 
-			foreach ( PersonBehaviour person in ScannedPeople )
-			{
-				if (!person) continue;
-
-				foreach ( GripBehaviour grip in person.GetComponentsInChildren<GripBehaviour>() )
-				{
-					if (!grip.isHolding) continue;
-
-					if ( grip.CurrentlyHolding.TryGetComponent<Props>( out Props prop ) )
-					{
-						if ( prop.canShoot && xxx.AimingTowards( prop.transform, Head ) )
-						{
-							if (!noFight && !noShoot && HasGun) {
-								Action.Weights["DefendPerson"] += xxx.rr(1,10);
-								Action.PeepTargets["DefendPerson"] = person;
-							}
-							else {
-								Action.Weights["Survive"] += xxx.rr(1,10);
-								Action.PeepTargets["Survive"] = person;
-							}
-							
-							return true;
-						}
-					}
-				}
-			}
-
-			//if ( MyFights.Count > 0 )
-			//{
-			//	AcknowledgeThreat = false;
-
-			//	foreach ( NpcBehaviour npcEnemy in MyFights )
-			//	{
-			//		if (!npcEnemy  || !npcEnemy.PBO ) continue;
-
-			//		if ( FacingToward( npcEnemy ) )
-			//		{
-			//			if ( (npcEnemy.FH.IsAiming && npcEnemy.FH.Tool.props.canShoot) || (npcEnemy.BH.IsAiming && npcEnemy.BH.Tool.props.canShoot) ) 
-			//			{
-			//				if ( FH.IsHolding || BH.IsHolding )
-			//				{
-			//					MyActWeights.Defend = 10 + (ThreatLevel - npcEnemy.ThreatLevel);
-			//				}
-			//				else
-			//				{
-			//					AcknowledgeThreat = true;
-			//					MyActWeights.Survive += npcEnemy.ThreatLevel;
-			//				}
-			//			}
-			//		}
-			//	}
-			//}
+			
 			return false;
 		}
 
@@ -1520,6 +1418,11 @@ namespace PPnpc
 				{
 					doFireEvent = true;
 					fireEvent.PBs.Add(limb.PhysicalBehaviour);
+				}
+
+				if (limb.RoughClassification == LimbBehaviour.BodyPart.Torso && !limb.IsConsideredAlive)
+				{
+					Death(true);
 				}
 			}
 
@@ -1639,34 +1542,52 @@ namespace PPnpc
 			}
 		}
 
-
-
-		int ThreatFrameCount = 0;
-
-
-		public void Damage(float damage)
+		public void CheckSigns()
 		{
+			bool bhealing = InHealZone;
+			
+			NoShoot = NoFight = NoEntry = InHealZone = false;
+			
+			if (NpcGadget.AllSigns.Count == 0 || MyColliders.Length == 0) return;
+			
+			List<Collider2D> colResults = new List<Collider2D>();
+			//filter.NoFilter();
 
-			if (!PBO || !PBO.IsAlive()) return;
-			if (Time.time - LastTimeShot < 5) return;
-
-			//FunFacts.Inc(NpcId, "BeenShot");
-			Mojo.Feel("Fear", 2f);
-			Mojo.Feel("Angry", 1f);
-			Mojo.Feel("Bored", -20f);
-
-			if (HasGun)
+			
+			
+			foreach ( NpcGadget sign in NpcGadget.AllSigns )
 			{
-				if (FH.IsHolding) FH.FireAtWill = true;
-				if (BH.IsHolding) BH.FireAtWill = true;
+				if ( sign.box != null )
+				{
+					sign.box.OverlapCollider(filter, colResults);
+					if (colResults.Intersect(MyColliders).Any()) { 
+						if (sign.Gadget == Gadgets.NoGunSign)        NoShoot    = true;
+						else if (sign.Gadget == Gadgets.NoFightSign) NoFight    = true;
+						else if (sign.Gadget == Gadgets.NoEntrySign) NoEntry    = true;
+						else if (sign.Gadget == Gadgets.HealingSign) InHealZone = true;
+					}
+				}
 			}
 
-			Action.ClearAction();
-			//StartCoroutine(IGuessShooter(shot.normal));
-			//LastTimeShot = Time.time;
-
-		
+			if ( InHealZone )
+			{
+				bool xtraHeal;
+				foreach ( LimbBehaviour limb in PBO.Limbs )
+				{
+					xtraHeal = true;
+					if (limb.BruiseCount > 0) {limb.BruiseCount--; xtraHeal = false;}
+					if (limb.CirculationBehaviour.StabWoundCount > 0) {limb.CirculationBehaviour.StabWoundCount--; xtraHeal = false;}
+					if (limb.CirculationBehaviour.GunshotWoundCount > 0) {limb.CirculationBehaviour.GunshotWoundCount--; }
+					if (limb.Health < limb.InitialHealth) {limb.Health += 0.01f; xtraHeal = false;}
+					if (limb.PhysicalBehaviour.BurnProgress > 0) {limb.PhysicalBehaviour.BurnProgress -= 0.01f; xtraHeal = false;}
+					if (limb.SkinMaterialHandler.AcidProgress > 0) {limb.SkinMaterialHandler.AcidProgress -= 0.01f; xtraHeal = false;}
+					if (limb.SkinMaterialHandler.RottenProgress > 0) {limb.SkinMaterialHandler.RottenProgress -= 0.01f; xtraHeal = false;}
+					if (xtraHeal && limb.Broken) limb.HealBone();
+					if (limb.InitialHealth - limb.Health > 0.5f)  limb.CirculationBehaviour.HealBleeding();
+				}
+			}
 		}
+
 
 		public void Shot(Shot shot)
 		{
@@ -1674,7 +1595,6 @@ namespace PPnpc
 			if (!PBO || !PBO.IsAlive()) return;
 			if (Time.time - LastTimeShot < 5) return;
 
-			//FunFacts.Inc(NpcId, "BeenShot");
 			Mojo.Feel("Fear", 2f);
 			Mojo.Feel("Angry", 1f);
 			Mojo.Feel("Bored", -20f);
@@ -1692,10 +1612,7 @@ namespace PPnpc
 		
 		}
 
-		public void Stabbed(Stabbing stab)
-		{
-			FunFacts.Inc(NpcId, "BeenStabbed");
-		} 
+		
 
 
 		public bool CollideNPC( NpcBehaviour otherNPC )
@@ -2028,10 +1945,12 @@ namespace PPnpc
 
 			for (; ; )
 			{
-				//if (!CheckedJoints) StartCoroutine(ICheckJoints());
+				CheckSigns();
 
-				if ( LB["Foot"] ) LB["Foot"].ImmuneToDamage           = true;
-				if ( LB["FootFront"] ) LB["FootFront"].ImmuneToDamage = true;
+				if ( LB["Foot"] ) LB["Foot"].ImmuneToDamage                   = true;
+				if ( LB["FootFront"] ) LB["FootFront"].ImmuneToDamage         = true;
+				if ( LB["LowerArm"] ) LB["LowerArm"].ImmuneToDamage           = true;
+				if ( LB["LowerArmFront"] ) LB["LowerArmFront"].ImmuneToDamage = true;
 
 				if (!CanGhost)
 				{
@@ -2055,7 +1974,26 @@ namespace PPnpc
 					TimedNpcIgnored.Remove(keys[i]);
 				}
 
-				//if (Head && RB["Head"].velocity.magnitude > 10) GameObject.Destroy(PBO);
+				//	Clean out expired bGhosts
+				if ( BGhost.Count > 0 )
+				{
+					Transform[] CL = BGhost.Keys.ToArray();
+					for (int i = CL.Length; --i >= 0;)
+					{
+						if ( BGhost[CL[i]] + 2 < Time.time ) BGhost.Remove(CL[i]);
+					}
+				}
+
+				if (Time.time - NpcEvents.BloodTimer > 1f)
+				{
+					NpcEvents.CleanBlood();
+					NpcEvents.BloodTimer = Time.time;
+				}
+
+				if ( BloodyNose > 0 && --BloodyNose == 0 )
+				{
+					LB["Head"].CirculationBehaviour.HealBleeding();
+				}
 
 				yield return new WaitForSeconds(2);
 				if (!PBO) GameObject.Destroy(this);
@@ -2300,11 +2238,14 @@ namespace PPnpc
 
 			if (!EnhancementTroll && !BypassChip) return;
 
-			if (LastCatSaid == cat) return;
+			//if (LastCatSaid == cat) return;
+
+			if (Time.time < LastSmack) return;
+			LastSmack = Time.time + 3f;
 
 			LastCatSaid = cat;
 
-			string Msg = NpcAction.SmackText[cat].PickRandom();
+			string Msg = NpcChat.GetRandomSmack(cat);
 
 			NpcChat chat = Head.gameObject.AddComponent<NpcChat>();
 			chat.Say(Msg, Seconds, this);
@@ -2492,7 +2433,13 @@ namespace PPnpc
 			limb.CirculationBehaviour.AddLiquid(Liquid.GetLiquid("LIFE SERUM"), 0.1f);
 		}
 
-		public void LimbRegen(LimbBehaviour limb, float option)     => limb.RegenerationSpeed *= option;
+
+		public void LimbRegen(LimbBehaviour limb, float option) {
+			limb.RegenerationSpeed      = option;  
+			limb.GForcePassoutThreshold = 100;
+			limb.GForceDamageThreshold  = 100;
+		}
+
 		public void LimbImmune(LimbBehaviour limb, bool option)     => limb.ImmuneToDamage = option;
 		public void LimbIchi( LimbBehaviour limb )
 		{
@@ -2551,7 +2498,7 @@ namespace PPnpc
 		{
 			if (Vector2.Dot( limb.transform.up, Vector2.down ) < 0.1f ) return;
 			//Mathf.Abs(limb.transform.eulerAngles.z) 
-			PBO.LinkedPoses[PoseState.Rest].ShouldStumble = false;
+			//PBO.LinkedPoses[PoseState.Rest].ShouldStumble = false;
 			GetUp = true;
 
 			float num = Mathf.DeltaAngle(limb.transform.eulerAngles.z, 0f) * limb.FakeUprightForce * limb.MotorStrength;
@@ -2719,8 +2666,6 @@ namespace PPnpc
 			};
 
 
-			Vector3 diff;
-			HingeJoint2D joint;
 			Vector3 pos;
 			Transform mbod = LB["MiddleBody"].transform;
 
@@ -2734,15 +2679,6 @@ namespace PPnpc
 					pos = LimbPositions[ln].position;
 					if (ln != "MiddleBody") LB[ln].transform.position = mbod.position + pos;
 					if (!LimbjointStuff.ContainsKey(ln)) continue;
-					//joint = LB[ln].Joint;
-					//diff  = LimbjointStuff[ln].connectedAnchor - joint.connectedAnchor;
-
-					//joint.enabled         = false;
-					//joint.attachedRigidbody.transform.Translate( diff );
-					//joint.connectedAnchor = LimbjointStuff[ln].connectedAnchor;
-					//joint.enabled         = true;
-
-					//LB[ln].Joint = joint;
 				}
 			}
 		}
@@ -2782,6 +2718,8 @@ namespace PPnpc
 			Rigidbody2D[] RBs   = PBO.transform.GetComponentsInChildren<Rigidbody2D>();
 			LimbBehaviour[] LBs = PBO.transform.GetComponentsInChildren<LimbBehaviour>();
 			Mojo                = new NpcMojo(this);
+			Actions             = gameObject.GetOrAddComponent<NpcActions>();
+
 
 			Config.SetName(PBO.name);
 
@@ -2823,25 +2761,20 @@ namespace PPnpc
 				{
 					Condition = (Func<bool>) (() => this.enabled)
 				});
-
-
-
 			}
 
 			Head		        = LB["Head"].transform;
-
 			NpcId               = PBO.GetHashCode();
 
 			SavePoses();
 
 			if (WalkPose == null) WalkPose = PBO.LinkedPoses[PoseState.Walking];
 
-			FH    = LB["LowerArmFront"].gameObject.GetOrAddComponent<NpcHand>();
-			BH    = LB["LowerArm"].gameObject.GetOrAddComponent<NpcHand>();
-			Hands = new NpcHand[]{ FH,BH };
+			FH     = LB["LowerArmFront"].gameObject.GetOrAddComponent<NpcHand>();
+			BH     = LB["LowerArm"].gameObject.GetOrAddComponent<NpcHand>();
+			Hands  = new NpcHand[]{ FH,BH };
 			Action = gameObject.GetOrAddComponent<NpcAction>();
-
-			HeadL = LB["Head"];
+			HeadL  = LB["Head"];
 
 			filter.NoFilter();
 
@@ -2852,13 +2785,8 @@ namespace PPnpc
 
 			MyWidth      = transform.root.GetComponentInChildren<SpriteRenderer>().bounds.size.x;
 			MyHeight     = transform.root.GetComponentInChildren<SpriteRenderer>().bounds.size.y;
-
 			CommonPoses  = NpcPose.SetCommonPoses(this);
-
 			Goals        = new NpcGoals(this);
-
-			FunFacts.Init(NpcId,Config.Name);
-
 
 			NpcEvents.Init();
 			NpcEvents.Subscribe(this);
@@ -2871,10 +2799,6 @@ namespace PPnpc
 			audioSource.spatialBlend = 1f;
 			audioSource.dopplerLevel = 0f;
 			audioSource.enabled      = true;
-
-			StartCoroutine(CheckStatus());
-			StartCoroutine(IFeelings());
-
 
 			if (Config.AutoStart) Active = true;
 
@@ -2910,9 +2834,43 @@ namespace PPnpc
 				lp.position = limb.transform.position - midbod.position;
 				lp.rotation = limb.transform.rotation;
 				LimbPositions[limb.name] = lp;
+
+				if (limb.name.Contains("Leg") && limb.InitialHealth == 25) limb.Health = limb.InitialHealth = 100;
+
+				//limb.BreakingThreshold *= 2f;
 			}
+			
 			LimbFacing = Facing;
 
+			List<Collider2D> colList = new List<Collider2D>();
+
+			foreach(Collider2D col1 in Head.root.GetComponentsInChildren<Collider2D>()) {
+				if (col1 == null) continue;
+				if (!(bool)(UnityEngine.Object) col1) continue;
+				colList.Add(col1);
+			}
+
+			MyColliders = colList.ToArray();
+
+			StartCoroutine(CheckStatus());
+			StartCoroutine(IFeelings());
+
+			//RunLimbs(LimbRegen, 2f);
+
+			float[] cc = new float[3];
+			float ct = 0;
+			while (true)
+			{
+				ct = 0f;
+				for ( int i = 0; i < 3; ++i )
+				{
+					cc[i] = xxx.rr(0.0f, 1.0f);
+					ct   += cc[i];
+				}
+				if (ct > 1.0f) break;
+			}
+
+			ChatColor = new Color(cc[0], cc[1], cc[2]);
 		}
 
 		public Dictionary<string, LimbJointInfo> LimbjointStuff = new Dictionary<string, LimbJointInfo>();

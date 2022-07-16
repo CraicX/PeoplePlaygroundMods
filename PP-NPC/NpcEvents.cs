@@ -26,9 +26,12 @@ namespace PPnpc
 
         public static Dictionary<EventIds, float> EventThrottle = new Dictionary<EventIds, float>();
 
+        public static Dictionary<int, BloodSplatter> OldBlood = new Dictionary<int, BloodSplatter>();
+
         public static event System.EventHandler<UserSpawnEventArgs> OnItemSpawned;
         public static bool IsConfigured = false;
 
+        public static float BloodTimer = 0f;
 
         public static void Subscribe( NpcBehaviour npc )
         {
@@ -39,9 +42,24 @@ namespace PPnpc
             }
         }
 
-        public static void Init()
+        public struct BloodSplatter
+		{
+            public float timer;
+            public SpriteRenderer sr;
+
+            public BloodSplatter( GameObject g )
+			{
+                timer = Time.time;
+                sr    = g.GetComponent<SpriteRenderer>();
+			}
+
+		}
+
+		public static void Init()
         {
             SetupEvents();
+
+            Physics2D.velocityThreshold = 10;
         }
 
 
@@ -95,7 +113,6 @@ namespace PPnpc
 
                 ModAPI.OnItemSpawned += ( sender, args ) =>
                 {
-
                     if ( args.Instance.TryGetComponent<PersonBehaviour>( out PersonBehaviour person ) )
                     {
                         if ( person.TryGetComponent<NpcBehaviour>( out NpcBehaviour npc ) ) NpcGlobal.AllNPC.Add( npc );
@@ -365,11 +382,55 @@ namespace PPnpc
             }
         }
 
+        public static void CleanBlood()
+		{
+            int h;
+			
+            bool foundBlood = false;
+            Color c;
+            foreach ( DecalControllerBehaviour dcb in UnityEngine.Object.FindObjectsOfType<DecalControllerBehaviour>() )
+			{
+                if (!(bool) (UnityEngine.Object) dcb || !(bool) (UnityEngine.Object) dcb.decalHolder) break;
+                if ( dcb.name != "Root" && !dcb.name.Contains("wall") ) continue;
+                foreach (Transform t in dcb.decalHolder.transform)
+                {
+                    if (!(bool) (UnityEngine.Object) t.gameObject) continue;
+                    foundBlood = true;
+                    h = t.GetHashCode();
+                    if ( OldBlood.TryGetValue( h, out BloodSplatter splatter) )
+				    {
+
+                        int alpha = 100 - Mathf.RoundToInt(((Time.time - splatter.timer) / 60) * 100);
+
+                        if (alpha <= 0)
+					    {
+                            GameObject.Destroy(t.gameObject);
+                            OldBlood.Remove( h );
+					    } else { 
+
+                            if ( xxx.rr( 1, 3 ) == 2 )
+							{
+                                t.localScale *= 0.95f;
+                                c = splatter.sr.color;
+                                c.a = alpha * 0.01f;
+                                splatter.sr.color = c;
+                            } else
+							{
+                                splatter.timer += 0.9f;
+							}
+                        }
+
+				    } else OldBlood[h] = new BloodSplatter(t.gameObject);
+                }
+            }
+
+            if (!foundBlood && OldBlood.Count > 0) OldBlood.Clear();
+		}
 
         public static NpcBehaviour[] AllNpcs(NpcBehaviour filterOut=null)
         {
             List<NpcBehaviour> allNpcs = new List<NpcBehaviour>();
-
+            
             allNpcs.AddRange(UnityEngine.Object.FindObjectsOfType<NpcBehaviour>());
 
             if (filterOut == null) return allNpcs.ToArray();

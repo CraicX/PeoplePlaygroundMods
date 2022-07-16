@@ -20,7 +20,7 @@ namespace PPnpc
     public class NpcMain
     {
         static bool doSetup = true;
-        public static Sprite StatsBG, BlueScreenOfDeath, RedScreen, ChatSpriteBG;
+        public static Sprite StatsBG, BlueScreenOfDeath, RedScreen, ChatSpriteBG, BlankBlock;
         public static bool DEBUG_MODE    = true;
         public static bool DEBUG_DRAW    = false;
         public static bool DEBUG_LOGGING = false;
@@ -114,11 +114,13 @@ namespace PPnpc
 
             };
 
-
             StatsBG              = ModAPI.LoadSprite("img/hover-stats-panel.png");
             BlueScreenOfDeath    = ModAPI.LoadSprite("img/bluescreen-of-death.png", 4.6f);
             RedScreen			 = ModAPI.LoadSprite("img/angry-screen.png", 4.6f);
             ChatSpriteBG		 = ModAPI.LoadSprite("img/chat-bubble.png", 4.6f);
+            BlankBlock           = ModAPI.LoadSprite("img/block.png", 1f);
+
+
 
 
             Dictionary<string, Sprite> HeroAbilities = new Dictionary<string, Sprite>()
@@ -163,6 +165,70 @@ namespace PPnpc
             
 
             ModAPI.RegisterLiquid(AISyringe.AISerum.ID, new AISyringe.AISerum());
+
+            // ????????????????????????????????????????????????????????????
+            //   :::::: AI BED
+            // ????????????????????????????????????????????????????????????
+            //
+            ModAPI.Register(
+            new Modification()
+            {
+                OriginalItem          = ModAPI.FindSpawnable("Small I-Beam"),
+                NameToOrderByOverride = "c05",
+                NameOverride          = "AI Smart Bed",
+                DescriptionOverride   = "<color=#dadafc>This life-saving bed was invented by <color=#ffcd00>Doogie Howser's</color> uncle, <b><color=#ffcd00>Ziggy Howser</color></b>.  Sadly, Ziggy was run over by one of his Smart Beds before he sold a single unit.<br><br><color=orange>If enhanced, it can transport wounded AI when <color=yellow><b>Motorized Wheels</b></color> or <color=yellow><b>Hover Thrusters</b></color> are attached.",
+                CategoryOverride      = ModAPI.FindCategory("NPC"),
+                ThumbnailOverride     = ModAPI.LoadSprite("img/smart-bed-thumb.png", 1f),
+                AfterSpawn            = (Instance) =>
+                {
+                    SpriteRenderer sr	          = Instance.GetComponent<SpriteRenderer>();
+                    sr.sprite                     = ModAPI.LoadSprite("img/smart-bed.png", 5.2f);
+                    
+
+                    NpcSmartBed bed = Instance.GetOrAddComponent<NpcSmartBed>();
+
+                    GameObject expansion              = ModAPI.CreatePhysicalObject("Expansion", ModAPI.LoadSprite("img/bed-expansion.png", 5.2f));
+                    expansion.transform.SetParent(Instance.transform);
+                    expansion.transform.position      = Instance.transform.position;
+                    expansion.transform.rotation      = Instance.transform.rotation;
+                    expansion.transform.localPosition = new Vector2(1.375f,0.64f);
+                    expansion.GetComponent<PhysicalBehaviour>().MakeWeightless();
+                    
+                    
+                    NpcGadget expGadget               = expansion.AddComponent<NpcGadget>();
+                    expGadget.Gadget                  = Gadgets.Expansion;
+                    bed.Expansion = expGadget;
+                    bed.Expansion.SetupExpansion(new Vector2(0f,-1.1f));
+
+                    FixedJoint2D joint                 = expansion.AddComponent<FixedJoint2D>();
+                    joint.autoConfigureConnectedAnchor = true;
+                    joint.connectedBody                = Instance.GetComponent<Rigidbody2D>();
+
+                    bed.TeamSelect		  = new GameObject("TeamSelect", typeof(SpriteRenderer));
+                    bed.TeamSelect.transform.SetParent(Instance.transform);
+                    bed.TeamSelect.transform.localPosition = new Vector2(-1.40f,0.295f);
+                    bed.TeamSelect.transform.rotation = Instance.transform.rotation;
+
+                    bed.srts = bed.TeamSelect.GetComponent<SpriteRenderer>();
+
+                    bed.srts.sprite        = ModAPI.LoadSprite("img/bed-team.png", 5.2f);
+                    bed.srts.enabled       = true;
+                    bed.srts.color	       = new Color(0.1f,0.1f,0.1f,0.1f);
+                    bed.srts.sortingOrder += 1;
+
+                    
+                    bed.SetupBed();
+
+                    
+                    Instance.FixColliders();
+
+
+                }
+            });
+
+
+
+
 
             // ????????????????????????????????????????????????????????????
             //   :::::: AI MICROCHIP
@@ -373,13 +439,13 @@ namespace PPnpc
                 OriginalItem          = ModAPI.FindSpawnable("Metal Pole"),
                 NameToOrderByOverride = "d01",
                 NameOverride          = "No Fighting Sign",
-                DescriptionOverride   = "Designate areas where fighting is prohibited",
+                DescriptionOverride   = "<color=yellow>Designate areas where <color=orange><b>fighting is prohibited</b>",
                 CategoryOverride      = ModAPI.FindCategory("NPC"),
                 ThumbnailOverride     = ModAPI.LoadSprite("img/no-fighting-thumb.png", 3.5f),
                 AfterSpawn            = (Instance) =>
                 {
                     SpriteRenderer sr	    = Instance.GetComponent<SpriteRenderer>();
-                    sr.sprite               = ModAPI.LoadSprite("img/no-fighting.png", 2.0f);
+                    sr.sprite               = ModAPI.LoadSprite("img/no-fighting.png", 4.0f, false);
                     sr.sortingLayerName     = "Background";
                     sr.sortingOrder         = -10;
                     PhysicalBehaviour pb    = Instance.GetComponent<PhysicalBehaviour>();
@@ -395,14 +461,11 @@ namespace PPnpc
                         Instance.transform.localScale = Vector3.one;
                         arrow.transform.localScale    = new Vector3(-1f,1f,1f);
 					}
-
-                    Instance.FixColliders();
                     
-                    NpcGadget gadget  = arrow.AddComponent<NpcGadget>();
+                    NpcGadget gadget  = Instance.AddComponent<NpcGadget>();
                     if (arrow.transform.localScale.x < 0f) gadget.SignLeft = true;
                     gadget.Gadget     = Gadgets.NoFightSign;
                     gadget.SetupSign();
-
                 }
             });
 
@@ -413,7 +476,7 @@ namespace PPnpc
                 OriginalItem          = ModAPI.FindSpawnable("Metal Pole"),
                 NameToOrderByOverride = "d02",
                 NameOverride          = "No Guns Sign",
-                DescriptionOverride   = "Designate areas where Guns are prohibited",
+                DescriptionOverride   = "<color=yellow>Designate areas where <color=orange><b>Guns are prohibited</b>",
                 CategoryOverride      = ModAPI.FindCategory("NPC"),
                 ThumbnailOverride     = ModAPI.LoadSprite("img/no-guns-thumb.png", 3.5f),
                 AfterSpawn            = (Instance) =>
@@ -427,23 +490,92 @@ namespace PPnpc
                     GameObject arrow = new GameObject("Arrow", typeof(SpriteRenderer));
 
                     SpriteRenderer arsr = arrow.GetComponent<SpriteRenderer>();
+                    arsr.sprite = ModAPI.LoadSprite("img/arrow.png", 4.0f, false);
+                    arrow.transform.SetParent(Instance.transform, false);
+
+                    if ( Instance.transform.localScale.x < 0f )
+					{
+                        Instance.transform.localScale = Vector3.one;
+                        arrow.transform.localScale    = new Vector3(-1f,1f,1f);
+					}
+                    
+                    NpcGadget gadget  = Instance.AddComponent<NpcGadget>();
+                    if (arrow.transform.localScale.x < 0f) gadget.SignLeft = true;
+                    gadget.Gadget     = Gadgets.NoGunSign;
+                    gadget.SetupSign();
+                }
+            });
+
+
+            ModAPI.Register(
+            new Modification()
+            {
+                OriginalItem          = ModAPI.FindSpawnable("Metal Pole"),
+                NameToOrderByOverride = "d03",
+                NameOverride          = "No Entry Sign",
+                DescriptionOverride   = "<color=yellow>Designate areas where <color=orange><b>people cannot enter</b>",
+                CategoryOverride      = ModAPI.FindCategory("NPC"),
+                ThumbnailOverride     = ModAPI.LoadSprite("img/no-entry-thumb.png", 3.5f),
+                AfterSpawn            = (Instance) =>
+                {
+                    SpriteRenderer sr	    = Instance.GetComponent<SpriteRenderer>();
+                    sr.sprite               = ModAPI.LoadSprite("img/no-entry.png", 4.0f);
+                    sr.sortingLayerName     = "Background";
+                    sr.sortingOrder         = -10;
+                    PhysicalBehaviour pb    = Instance.GetComponent<PhysicalBehaviour>();
+
+                    GameObject arrow = new GameObject("Arrow", typeof(SpriteRenderer));
+
+                    SpriteRenderer arsr = arrow.GetComponent<SpriteRenderer>();
                     arsr.sprite = ModAPI.LoadSprite("img/arrow.png", 4.0f);
                     arrow.transform.SetParent(Instance.transform, false);
 
                     if ( Instance.transform.localScale.x < 0f )
 					{
-                        
                         Instance.transform.localScale = Vector3.one;
                         arrow.transform.localScale    = new Vector3(-1f,1f,1f);
 					}
 
-                    Instance.FixColliders();
-                    
-                    NpcGadget gadget               = arrow.AddComponent<NpcGadget>();
-                    gadget.Gadget                  = Gadgets.NoFightSign;
-
+                    NpcGadget gadget  = Instance.AddComponent<NpcGadget>();
                     if (arrow.transform.localScale.x < 0f) gadget.SignLeft = true;
+                    gadget.Gadget     = Gadgets.NoEntrySign;
+                    gadget.SetupSign();
+                }
+            });
 
+
+            ModAPI.Register(
+            new Modification()
+            {
+                OriginalItem          = ModAPI.FindSpawnable("Metal Pole"),
+                NameToOrderByOverride = "d04",
+                NameOverride          = "Hospital Sign",
+                DescriptionOverride   = "<color=yellow>Designate areas where wounded can go for <color=orange><b>accelerated healing</b></color> and special treatment",
+                CategoryOverride      = ModAPI.FindCategory("NPC"),
+                ThumbnailOverride     = ModAPI.LoadSprite("img/hospital-thumb.png", 3.5f),
+                AfterSpawn            = (Instance) =>
+                {
+                    SpriteRenderer sr	    = Instance.GetComponent<SpriteRenderer>();
+                    sr.sprite               = ModAPI.LoadSprite("img/hospital.png", 4.0f);
+                    sr.sortingLayerName     = "Background";
+                    sr.sortingOrder         = -10;
+                    PhysicalBehaviour pb    = Instance.GetComponent<PhysicalBehaviour>();
+
+                    GameObject arrow = new GameObject("Arrow", typeof(SpriteRenderer));
+
+                    SpriteRenderer arsr = arrow.GetComponent<SpriteRenderer>();
+                    arsr.sprite = ModAPI.LoadSprite("img/arrow.png", 4.0f);
+                    arrow.transform.SetParent(Instance.transform, false);
+
+                    if ( Instance.transform.localScale.x < 0f )
+					{
+                        Instance.transform.localScale = Vector3.one;
+                        arrow.transform.localScale    = new Vector3(-1f,1f,1f);
+					}
+
+                    NpcGadget gadget  = Instance.AddComponent<NpcGadget>();
+                    if (arrow.transform.localScale.x < 0f) gadget.SignLeft = true;
+                    gadget.Gadget     = Gadgets.HealingSign;
                     gadget.SetupSign();
 
                 }
@@ -572,7 +704,7 @@ namespace PPnpc
                 AllSpawn = !AllSpawn;
                 if (Input.GetKey(KeyCode.LeftShift))
                 {
-                    ModAPI.Notify("NPC DEBUG: All NPC Spawn");
+                    ModAPI.Notify("NPC DEBUG: All NPC Spawn " + (AllSpawn ? "<color=green>ON" : "<color=red>OFF"));
                     if ( !AllSpawnSet )
                     {
                         AllSpawnSet = true;

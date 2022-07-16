@@ -252,7 +252,7 @@ namespace PPnpc
 					Destroy(this);
 				}
 
-				//ShowText();
+				if (NPC) ShowText();
 
 				yield return new WaitForSeconds(5);
 			}
